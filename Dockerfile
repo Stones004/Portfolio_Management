@@ -20,5 +20,5 @@ RUN chmod +x /wait-for-mysql.sh
 
 EXPOSE 8000
 
-CMD ["/wait-for-mysql.sh", "gunicorn", "stocksite.wsgi:application", "--bind", "0.0.0.0:8000"]
+CMD ["gunicorn", "stocksite.wsgi:application", "--bind", "0.0.0.0:8000"]
 
