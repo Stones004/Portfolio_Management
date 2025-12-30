@@ -1,10 +1,12 @@
 #!/bin/sh
+set -e
 
-echo "Waiting for MySQL at $DB_HOST:$DB_PORT..."
+host="$DB_HOST"
+shift
 
-while ! nc -z "$DB_HOST" "$DB_PORT"; do
-  sleep 1
+until nc -z "$host" 3306; do
+  echo "Waiting for MySQL..."
+  sleep 2
 done
 
-echo "MySQL is available!"
 exec "$@"
