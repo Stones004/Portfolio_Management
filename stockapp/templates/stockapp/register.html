@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Register | Portfolio Manager</title>
+    <style>
+        body {
+            background-color: #000;
+            color: white;
+            font-family: 'Poppins', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .register-container {
+            background: rgba(20, 20, 20, 0.9);
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 0 20px rgba(0,255,153,0.3);
+            width: 320px;
+            text-align: center;
+        }
+        h2 {
+            color: #00ff99;
+            margin-bottom: 20px;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        input {
+            padding: 10px;
+            border-radius: 8px;
+            border: none;
+            outline: none;
+            background-color: #222;
+            color: white;
+        }
+        button {
+            padding: 10px;
+            background: #00ff99;
+            color: black;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.3s ease;
+        }
+        button:hover {
+            background: #00cc77;
+        }
+        .errorlist {
+            color: #ff3366;
+            list-style: none;
+            padding: 0;
+            margin-bottom: 10px;
+        }
+        .login-link {
+            margin-top: 10px;
+            color: #00ffcc;
+        }
+        a {
+            color: #00ffcc;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="register-container">
+        <h2>Create Account</h2>
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit">Register</button>
+        </form>
+        <p class="login-link">
+            Already have an account? <a href="{% url 'login' %}">Login</a>
+        </p>
+    </div>
+</body>
+</html>

@@ -1,0 +1,12 @@
+Django>=5.2
+gunicorn
+mysqlclient
+pandas
+numpy
+yfinance
+openpyxl
+python-dotenv
+whitenoise
+matplotlib
+seaborn
+scipy

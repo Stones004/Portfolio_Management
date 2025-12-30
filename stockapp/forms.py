@@ -27,11 +27,11 @@ class StockForm(forms.Form):
         },
         widget=forms.NumberInput(attrs={
             'placeholder': 'e.g. 0.25',
-            'step': '0.01',
+            'step': 'any',
             'min': '0',
             'max': '1',
             'class': 'weight-input'
         })
     )
 
-StockFormSet = formset_factory(StockForm, extra=2)
+StockFormSet = formset_factory(StockForm, extra=1,can_delete=True)

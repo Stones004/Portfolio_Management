@@ -4,59 +4,98 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Portfolio Analyzer (Bull vs Bear)</title>
+    <title>Discounted Cash Flow Screener</title>
 
     <style>
-        /* === GENERAL PAGE STYLING === */
         body {
             font-family: 'Poppins', sans-serif;
-            background-color: #000;
+            background: #000;
             color: #f5f6fa;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
             margin: 0;
-            overflow-x: hidden;
+            padding: 0;
         }
 
-        #candlestick-bg,
-        #snowfall-bg {
-            position: fixed;
-            top: 0;
-            left: 0;
-            z-index: -1;
-            width: 100vw;
-            height: 100vh;
-            background-color: #000;
+        main {
+            max-width: 900px;
+            margin: 120px auto 100px;
+            padding: 30px;
+            background: rgba(0, 0, 0, 0.45);
+            border-radius: 14px;
+            border: 1px solid rgba(0, 255, 204, 0.25);
         }
 
-        /* === HEADER STYLING === */
-        @keyframes neonPulse {
-            0% {
-                text-shadow: 0 0 6px #00ffcc;
-            }
-
-            50% {
-                text-shadow: 0 0 10px #00ccff;
-            }
-
-            100% {
-                text-shadow: 0 0 6px #00ffcc;
-            }
-        }
-
-        header {
-            position: fixed;
-            top: 0;
-            width: 100%;
-            background: rgba(0, 0, 0, 0.88);
+        h1,
+        h2,
+        h3 {
             color: #00ffcc;
-            box-shadow: 0 0 10px rgba(0, 255, 204, 0.15);
-            border-bottom: 1px solid rgba(0, 255, 204, 0.25);
-            z-index: 1000;
-            animation: neonPulse 5s ease-in-out infinite alternate;
+        }
+
+        label {
+            display: block;
+            margin-top: 15px;
+            font-weight: 600;
+            color: #00ffcc;
+        }
+
+        input {
+            width: 60%;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 255, 204, 0.3);
+            background: rgba(10, 10, 10, 0.9);
+            color: #fff;
+            font-size: 15px;
+            margin-top: 6px;
+        }
+
+        button {
+            margin-top: 25px;
+            padding: 12px 22px;
+            background: linear-gradient(90deg, #00ffcc, #00ccff);
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        .metric {
+            font-size: 18px;
+            margin-top: 10px;
+        }
+
+        hr {
+            margin: 40px 0;
+            border: none;
+            border-top: 1px solid rgba(0, 255, 204, 0.25);
+        }
+
+        table {
+            width: 100%;
+            margin-top: 25px;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            border: 1px solid rgba(0, 255, 204, 0.3);
+            padding: 8px;
+            text-align: right;
+        }
+
+        th {
+            background: rgba(0, 255, 204, 0.15);
+            color: #00ffcc;
+        }
+
+        .error {
+            margin-top: 20px;
+            color: #ff6b6b;
+            font-weight: 600;
         }
 
         /* === NAV === */
@@ -79,6 +118,34 @@
             display: flex;
             gap: 10px;
         }
+
+        header {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background: rgba(0, 0, 0, 0.88);
+            color: #00ffcc;
+            box-shadow: 0 0 10px rgba(0, 255, 204, 0.15);
+            border-bottom: 1px solid rgba(0, 255, 204, 0.25);
+            z-index: 1000;
+            animation: neonPulse 5s ease-in-out infinite alternate;
+        }
+
+        /* === HEADER STYLING === */
+        @keyframes neonPulse {
+            0% {
+                text-shadow: 0 0 6px #00ffcc;
+            }
+
+            50% {
+                text-shadow: 0 0 10px #00ccff;
+            }
+
+            100% {
+                text-shadow: 0 0 6px #00ffcc;
+            }
+        }
+
 
         /* === BUTTONS === */
         .nav-btn {
@@ -104,6 +171,7 @@
             box-shadow: 0 0 6px rgba(255, 51, 102, 0.4);
         }
 
+
         /* === FOOTER === */
         footer {
             position: fixed;
@@ -124,13 +192,6 @@
             animation: neonPulse 5s ease-in-out infinite alternate;
         }
 
-        /* === MAIN CONTENT === */
-        main {
-            width: 100%;
-            max-width: 1000px;
-            padding: 120px 20px 100px;
-            box-sizing: border-box;
-        }
 
         /* === CONTAINERS === */
         .container {
@@ -147,60 +208,6 @@
             box-shadow: 0 0 18px rgba(0, 255, 204, 0.22);
         }
 
-        /* === TABLE === */
-        table {
-            width: 90%;
-            margin: 25px auto;
-            border-collapse: collapse;
-            border: 1px solid rgba(0, 255, 204, 0.3);
-        }
-
-        th,
-        td {
-            padding: 10px;
-            border: 1px solid #00ffcc;
-            text-align: center;
-        }
-
-        th {
-            background-color: rgba(0, 255, 204, 0.15);
-        }
-
-        /* === FORM ELEMENTS === */
-        input {
-            border: 1px solid rgba(0, 255, 204, 0.3);
-            font-size: 14px;
-            background: rgba(10, 10, 10, 0.9);
-            color: #fff;
-            outline: none;
-            transition: 0.2s ease;
-        }
-
-        input:focus {
-            border-color: #00ffcc;
-            box-shadow: 0 0 6px rgba(0, 255, 204, 0.6);
-        }
-
-        /* === ERROR === */
-        .error {
-            background: rgba(255, 0, 80, 0.25);
-            padding: 10px;
-            border-radius: 6px;
-            border: 1px solid #ff3366;
-            color: #ffcccc;
-            margin-top: 10px;
-            box-shadow: 0 0 8px rgba(255, 51, 102, 0.35);
-        }
-
-        /* === FILE UPLOAD === */
-        .file-upload {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            margin-top: 10px;
-            flex-wrap: wrap;
-        }
 
         /* === DROPDOWN MENU (HOVER) === */
         /* === DROPDOWN MENU (HOVER, CLEAN) === */
@@ -251,11 +258,23 @@
             background: rgba(0, 255, 204, 0.08);
             /* soft highlight */
         }
-    </style>
 
+
+        #candlestick-bg,
+        #snowfall-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: -1;
+            width: 100vw;
+            height: 100vh;
+            background-color: #000;
+        }
+    </style>
 </head>
 
 <body>
+
     <header id="page-header">
         <div class="nav-container">
             <h2><a href="{% url 'home' %}" style="text-decoration: none; color: #00ffcc;">💹 Portfolio Analyzer
@@ -266,8 +285,7 @@
                     <div class="dropdown-menu">
                         <a href="{% url 'home' %}">📊 Sharpe Ratio Analyzer</a>
                         <a href="{% url 'efficient_frontier' %}">🚀 Efficient Frontier</a>
-                        <a href="{% url 'dcf' %}">📊 DCF</a>
-                        {% if user.is_authenticated %}
+                        <a href="{% url 'dcf' %}">📊 DCF</a>{% if user.is_authenticated %}
                         <form action="{% url 'logout' %}" method="post">
                             {% csrf_token %}
                             <button type="submit">🚪 Logout</button>
@@ -280,125 +298,109 @@
     </header>
 
     <main>
-        <canvas id="candlestick-bg"></canvas>
+        <h1>Discounted Cash Flow Screener</h1>
 
-        <div class="container">
-            <h1>Welcome, {{ user.username }}</h1>
+        <!-- ================= FORM ================= -->
+        <form method="post">
+            {% csrf_token %}
 
-            <!-- 🔽 PORTFOLIO SELECTOR -->
-            {% if portfolios %}
-            <h3>Select Saved Portfolio</h3>
-            <form method="get">
-                <select name="portfolio_id" onchange="this.form.submit()" style="
-                        width:60%;
-                        padding:10px;
-                        border-radius:10px;
-                        background:rgba(10,10,10,0.9);
-                        color:#00ffcc;
-                        border:1px solid rgba(0,255,204,0.3);
-                        margin-bottom:20px;
-                    ">
-                    {% for p in portfolios %}
-                    <option value="">— Choose Portfolio —</option>
+            <!-- Ticker: always visible -->
+            <label>Stock Ticker</label>
+            <input type="text" name="ticker" placeholder="AAPL, MSFT, INFY.NS" value="{{ ticker }}" required>
 
-                    {% with is_selected=False %}
-                    {% if selected_portfolio and selected_portfolio.id == p.id %}
-                    {% with is_selected=True %}
-                    {% endwith %}
-                    {% endif %}
+            <!-- Assumptions: visible ONLY after first run -->
+            {% if show_inputs %}
 
-                    <option value="{{ p.id }}" {% if is_selected %}selected{% endif %}>
-                        {{ p.name }}
-                    </option>
-                    {% endwith %}
-                    {% endfor %}
-                </select>
-            </form>
+            <label>
+                WACC (%)
+                <span style="color:#aaa;font-size:13px;">
+                    (Original: {{ original_params.wacc }}%)
+                </span>
+            </label>
+            <input type="number" step="0.1" name="wacc" value="{{ input_params.wacc }}">
+
+            <label>
+                Growth Rate (%)
+                <span style="color:#aaa;font-size:13px;">
+                    (Original: {{ original_params.growth_rate }}%)
+                </span>
+            </label>
+            <input type="number" step="0.1" name="growth_rate" value="{{ input_params.growth_rate }}">
+
+            <label>
+                Reinvestment Rate (%)
+                <span style="color:#aaa;font-size:13px;">
+                    (Original: {{ original_params.reinvestment_rate }}%)
+                </span>
+            </label>
+            <input type="number" step="1" name="reinvestment_rate" value="{{ input_params.reinvestment_rate }}">
+
+            <label>
+                Terminal Growth (%)
+                <span style="color:#aaa;font-size:13px;">
+                    (Original: {{ original_params.terminal_growth }}%)
+                </span>
+            </label>
+            <input type="number" step="0.1" name="terminal_growth" value="{{ input_params.terminal_growth }}">
+
+            <label>Forecast Years</label>
+            <input type="number" name="years" value="{{ input_params.years }}">
+
             {% endif %}
 
-            <h3>Portfolio Input</h3>
+            <button type="submit">
+                {% if show_inputs %}
+                Re-run DCF
+                {% else %}
+                Run DCF
+                {% endif %}
+            </button>
+        </form>
 
-            <form id="portfolio-form" method="post" enctype="multipart/form-data">
-                {% csrf_token %}
-                {{ formset.management_form }}
-
-                <h3>Upload a CSV or Excel File</h3>
-                <input type="file" name="file" accept=".csv,.xls,.xlsx">
-                <button type="submit" name="action" value="upload_file">📂 Upload File</button>
-
-                <hr style="margin:20px 0;border-color:rgba(0,255,204,0.25);">
-
-                <h3>Manual Entry</h3>
-                <div id="form-container">
-                    {% for form in formset %}
-                    <div class="asset-row">
-                        {{ form.symbol }} {{ form.weight }}
-                    </div>
-                    {% endfor %}
-                </div>
-
-                <button type="button" id="add-row">➕ Add another asset</button>
-                <button type="submit" name="action" value="analyze">Analyze</button>
-            </form>
-
-            {% if message %}
-            <div class="message">{{ message }}</div>
-            {% endif %}
-            {% if error %}
-            <div class="error">{{ error }}</div>
-            {% endif %}
-        </div>
-
-        {% if portfolio_return %}
-        <div class="container">
-            <h3>Portfolio Analysis Results</h3>
-            <ul>
-                <li>Portfolio Return: {{ portfolio_return }}%</li>
-                <li>Portfolio Volatility: {{ portfolio_volatility }}%</li>
-                <li>Sharpe Ratio: {{ sharpe }}</li>
-                <li>Max Daily Loss: {{ max_daily_loss }}%</li>
-            </ul>
-        </div>
+        <!-- ================= ERROR ================= -->
+        {% if error %}
+        <div class="error">{{ error }}</div>
         {% endif %}
 
-        {% if histogram %}
-        <div class="container">
-            <h4>Portfolio Daily Returns Distribution</h4>
-            <img src="data:image/png;base64,{{ histogram }}" alt="Portfolio Histogram">
+        <!-- ================= RESULTS ================= -->
+        {% if result %}
+        <hr>
+
+        <h2>Valuation Results</h2>
+
+        <div class="metric">
+            <strong>Enterprise Value:</strong>
+            ₹{{ result.enterprise_value|floatformat:0 }}
         </div>
-        {% endif %}
 
-        {% if portfolio_return %}
-        <div style="text-align:center;margin-top:20px;">
-            <form action="{% url 'efficient_frontier' %}" method="post">
-                {% csrf_token %}
-                <input type="hidden" name="symbols" value="{{ symbols }}">
-                <input type="hidden" name="weights" value="{{ weights }}">
-                <button type="submit" class="nav-btn">Optimizer 🚀</button>
-            </form>
+        <div class="metric">
+            <strong>Equity Value:</strong>
+            ₹{{ result.equity_value|floatformat:0 }}
         </div>
-        {% endif %}
 
-        {% if portfolio_return %}
-        <div class="container" style="text-align:center;">
-            <h3>Save Portfolio</h3>
-
-            <form method="post">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="save_portfolio">
-                <input type="hidden" name="symbols" value="{{ symbols }}">
-                <input type="hidden" name="weights" value="{{ weights }}">
-
-                <input type="text" name="portfolio_name" placeholder="Enter portfolio name" required
-                    style="padding:10px;border-radius:8px;">
-
-                <button type="submit" class="nav-btn" style="margin-left:10px;">
-                    💾 Save Portfolio
-                </button>
-            </form>
+        <div class="metric">
+            <strong>Per Share Value:</strong>
+            ₹{{ result.per_share_value|floatformat:0 }}
         </div>
-        {% endif %}
 
+        <h3>DCF Forecast</h3>
+
+        <table>
+            <tr>
+                {% for col in result.dcf_table.columns %}
+                <th>{{ col }}</th>
+                {% endfor %}
+            </tr>
+
+            {% for _, row in result.dcf_table.iterrows %}
+            <tr>
+                {% for val in row %}
+                <td>{{ val|floatformat:0 }}</td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </table>
+        {% endif %}
     </main>
 
     <footer id="page-footer">
@@ -507,6 +509,7 @@
         });
 
     </script>
+
 </body>
 
 </html>

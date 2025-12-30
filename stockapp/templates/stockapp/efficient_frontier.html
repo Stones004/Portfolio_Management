@@ -1,6 +1,7 @@
 {% load static %}
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -32,12 +33,20 @@
         }
 
         /* ======= HEADER STYLING ======= */
-        
+
 
         @keyframes neonPulse {
-            0% { text-shadow: 0 0 10px #00ffcc, 0 0 20px #00ffcc; }
-            50% { text-shadow: 0 0 15px #00ccff, 0 0 30px #00ffcc; }
-            100% { text-shadow: 0 0 10px #00ffcc, 0 0 25px #00ccff; }
+            0% {
+                text-shadow: 0 0 10px #00ffcc, 0 0 20px #00ffcc;
+            }
+
+            50% {
+                text-shadow: 0 0 15px #00ccff, 0 0 30px #00ffcc;
+            }
+
+            100% {
+                text-shadow: 0 0 10px #00ffcc, 0 0 25px #00ccff;
+            }
         }
 
         .nav-container {
@@ -68,7 +77,7 @@
             border-radius: 8px;
             padding: 8px 14px;
             cursor: pointer;
-            box-shadow: 0 0 10px rgba(0,255,204,0.4);
+            box-shadow: 0 0 10px rgba(0, 255, 204, 0.4);
             transition: all 0.3s ease;
         }
 
@@ -86,7 +95,8 @@
         main {
             width: 100%;
             max-width: 1000px;
-            padding: 120px 20px 80px; /* Top padding adjusted for fixed header */
+            padding: 120px 20px 80px;
+            /* Top padding adjusted for fixed header */
             box-sizing: border-box;
         }
 
@@ -106,7 +116,8 @@
             box-shadow: 0 0 30px rgba(0, 255, 204, 0.4);
         }
 
-        h1, h3 {
+        h1,
+        h3 {
             text-align: center;
             color: #00ffcc;
             text-shadow: 0 0 12px #00ffcc;
@@ -124,14 +135,16 @@
         }
 
         /* === INPUTS & BUTTONS === */
-        input, button {
+        input,
+        button {
             padding: 10px;
             border-radius: 8px;
             border: none;
             margin: 5px;
         }
 
-        input[type="file"], input[type="number"] {
+        input[type="file"],
+        input[type="number"] {
             background: rgba(10, 10, 10, 0.85);
             border: 1px solid rgba(0, 255, 204, 0.3);
             color: #00ffcc;
@@ -157,7 +170,8 @@
             border-collapse: collapse;
         }
 
-        th, td {
+        th,
+        td {
             padding: 10px;
             border: 1px solid #00ffcc;
             text-align: center;
@@ -167,21 +181,34 @@
             background-color: rgba(0, 255, 204, 0.15);
         }
 
-       
+
 
         @keyframes footerGlow {
-            0% { color: #00ffcc; text-shadow: 0 0 10px #00ffcc; }
-            50% { color: #00e6b8; text-shadow: 0 0 20px #00e6ff; }
-            100% { color: #00ffcc; text-shadow: 0 0 10px #00ffcc; }
+            0% {
+                color: #00ffcc;
+                text-shadow: 0 0 10px #00ffcc;
+            }
+
+            50% {
+                color: #00e6b8;
+                text-shadow: 0 0 20px #00e6ff;
+            }
+
+            100% {
+                color: #00ffcc;
+                text-shadow: 0 0 10px #00ffcc;
+            }
         }
 
         img {
             margin-top: 15px;
             border-radius: 10px;
             max-width: 100%;
-            box-shadow: 0 0 25px rgba(0,255,204,0.2);
+            box-shadow: 0 0 25px rgba(0, 255, 204, 0.2);
         }
-        header, footer {
+
+        header,
+        footer {
             position: fixed;
             width: 100%;
             background: rgba(0, 0, 0, 0.85);
@@ -202,23 +229,81 @@
         }
 
         footer {
-        position: fixed;
-        bottom: 0;
-        width: 100%;
-        background: rgba(0, 0, 0, 0.85);
-        color: #00ffcc;
-        text-align: center;
-        padding: 1px 0;
-        border-top: 1px solid rgba(0, 255, 204, 0.3);
-        text-shadow: 0 0 10px #00ffcc;
-        box-shadow: 0 0 20px rgba(0, 255, 204, 0.2);
-        z-index: 1000;
-        animation: footerGlow 4s ease-in-out infinite alternate;
-        transition: transform 0.4s ease, opacity 0.3s ease;
-        will-change: transform, opacity;
-    }
-        
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            color: #00ffcc;
+            text-align: center;
+            padding: 1px 0;
+            border-top: 1px solid rgba(0, 255, 204, 0.3);
+            text-shadow: 0 0 10px #00ffcc;
+            box-shadow: 0 0 20px rgba(0, 255, 204, 0.2);
+            z-index: 1000;
+            animation: footerGlow 4s ease-in-out infinite alternate;
+            transition: transform 0.4s ease, opacity 0.3s ease;
+            will-change: transform, opacity;
+        }
 
+        .text-positive {
+            color: #00ffcc;
+        }
+
+        .text-negative {
+            color: #ff5555;
+        }
+
+        .text-neutral {
+            color: #aaa;
+        }
+
+        .dropdown {
+            position: relative;
+        }
+
+        .dropdown-toggle {
+            cursor: pointer;
+        }
+
+        .dropdown-menu {
+            position: absolute;
+            top: 42px;
+            right: 0;
+            background: rgba(0, 0, 0, 0.96);
+            border: 1px solid rgba(0, 255, 204, 0.22);
+            border-radius: 10px;
+            min-width: 220px;
+            display: none;
+            flex-direction: column;
+            z-index: 2000;
+            box-shadow: 0 0 6px rgba(0, 255, 204, 0.12);
+            overflow: hidden;
+            /* 🔒 prevents color bleed */
+        }
+
+        .dropdown:hover .dropdown-menu {
+            display: flex;
+        }
+
+        .dropdown-menu a,
+        .dropdown-menu button {
+            background: none;
+            border: none;
+            color: rgba(0, 255, 204, 0.85);
+            padding: 10px 14px;
+            text-align: left;
+            font-size: 14px;
+            cursor: pointer;
+            width: 100%;
+            box-shadow: none;
+            /* ❌ no glow */
+        }
+
+        .dropdown-menu a:hover,
+        .dropdown-menu button:hover {
+            background: rgba(0, 255, 204, 0.08);
+            /* soft highlight */
+        }
     </style>
 </head>
 
@@ -227,14 +312,23 @@
     <!-- 🌐 NAVBAR HEADER -->
     <header id="page-header">
         <div class="nav-container">
-            <h2>💹 Portfolio Analyzer Dashboard</h2>
+            <h2><a href="{% url 'home' %}" style="text-decoration: none; color: #00ffcc;">💹 Portfolio Analyzer
+                    Dashboard</a></h2>
             <nav class="nav-buttons">
-                <form action="{% url 'home' %}" method="get">
-                    <button type="submit" class="nav-btn">Sharpe Ratio Analyzer</button>
-                </form>
-                <form action="{% url 'efficient_frontier' %}" method="get">
-                    <button type="submit" class="nav-btn active">Efficient Frontier</button>
-                </form>
+                <div class="dropdown">
+                    <button class="nav-btn dropdown-toggle">☰ Menu</button>
+                    <div class="dropdown-menu">
+                        <a href="{% url 'home' %}">📊 Sharpe Ratio Analyzer</a>
+                        <a href="{% url 'efficient_frontier' %}">🚀 Efficient Frontier</a>
+                        <a href="{% url 'dcf' %}">📊 DCF</a>
+                        {% if user.is_authenticated %}
+                        <form action="{% url 'logout' %}" method="post">
+                            {% csrf_token %}
+                            <button type="submit">🚪 Logout</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
             </nav>
         </div>
     </header>
@@ -247,56 +341,58 @@
             <h1>Efficient Frontier Optimizer</h1>
 
             {% if not frontier_plot %}
-                <p>Upload a CSV file (columns: symbol, weight) to generate the Efficient Frontier, or access this page via the Optimizer button from the main analyzer.</p>
-                <form method="POST" enctype="multipart/form-data">
-                    {% csrf_token %}
-                    <input type="file" name="file" accept=".csv,.xlsx"><br>
-                    <label for="risk_free_rate">Risk-Free Rate:</label>
-                    <input type="number" step="0.01" name="risk_free_rate" id="risk_free_rate"
-                           value="{{ request.POST.risk_free_rate|default:0.05 }}" style="width:80px;">
-                    <button type="submit">Upload and Analyze</button>
-                </form>
-                {% if error %}
-                    <p style="color:red;">{{ error }}</p>
-                {% elif message %}
-                    <p style="color:#00ffcc;">{{ message }}</p>
-                {% endif %}
+            <p>Upload a CSV file (columns: symbol, weight) to generate the Efficient Frontier, or access this page via
+                the Optimizer button from the main analyzer.</p>
+            <form method="POST" enctype="multipart/form-data">
+                {% csrf_token %}
+                <input type="file" name="file" accept=".csv,.xlsx"><br>
+                <label for="risk_free_rate">Risk-Free Rate:</label>
+                <input type="number" step="0.01" name="risk_free_rate" id="risk_free_rate"
+                    value="{{ request.POST.risk_free_rate|default:0.05 }}" style="width:80px;">
+                <button type="submit">Upload and Analyze</button>
+            </form>
+            {% if error %}
+            <p style="color:red;">{{ error }}</p>
+            {% elif message %}
+            <p style="color:#00ffcc;">{{ message }}</p>
+            {% endif %}
             {% endif %}
 
             {% if frontier_plot %}
-                <img src="data:image/png;base64,{{ frontier_plot }}" alt="Efficient Frontier Chart">
+            <img src="data:image/png;base64,{{ frontier_plot }}" alt="Efficient Frontier Chart">
 
-                <h1 style="color: #ff66cc; text-shadow: 0 0 10px #ff66cc;">Optimal Portfolio (Max Sharpe)</h1>
-                <p style="font-size: 18px; line-height: 1.6; text-align: center; margin-top: 10px;">
-                    Expected Annual Return: <b style="color:#00ffcc;">{{ max_sharpe_return }}%</b><br>
-                    Volatility: <b style="color:#ffcc00;">{{ max_sharpe_std }}%</b><br>
-                    Sharpe Ratio: <b style="color:#ff66cc;">{{ max_sharpe_ratio }}</b><br>
-                    Risk-Free Rate: <b style="color:#ffffff;">{{ risk_free_rate }}</b>
-                </p>
+            <h1 style="color: #ff66cc; text-shadow: 0 0 10px #ff66cc;">Optimal Portfolio (Max Sharpe)</h1>
+            <p style="font-size: 18px; line-height: 1.6; text-align: center; margin-top: 10px;">
+                Expected Annual Return: <b style="color:#00ffcc;">{{ max_sharpe_return }}%</b><br>
+                Volatility: <b style="color:#ffcc00;">{{ max_sharpe_std }}%</b><br>
+                Sharpe Ratio: <b style="color:#ff66cc;">{{ max_sharpe_ratio }}</b><br>
+                Risk-Free Rate: <b style="color:#ffffff;">{{ risk_free_rate }}</b>
+            </p>
 
-                <h3>Weight Adjustment Summary</h3>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Symbol</th>
-                            <th>Old Weight</th>
-                            <th>New Weight</th>
-                            <th>Change</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for w in weight_changes %}
-                        <tr>
-                            <td>{{ w.symbol }}</td>
-                            <td>{{ w.old_weight }}</td>
-                            <td>{{ w.new_weight }}</td>
-                            <td style="color: {% if w.change > 0 %}#00ffcc{% elif w.change < 0 %}#ff5555{% else %}#aaa{% endif %};">
-                                {% if w.change > 0 %}+{% endif %}{{ w.change }}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <h3>Weight Adjustment Summary</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Old Weight</th>
+                        <th>New Weight</th>
+                        <th>Change</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for w in weight_changes %}
+                    <tr>
+                        <td>{{ w.symbol }}</td>
+                        <td>{{ w.old_weight }}</td>
+                        <td>{{ w.new_weight }}</td>
+                        <td
+                            class="{% if w.change > 0 %}text-positive{% elif w.change < 0 %}text-negative{% else %}text-neutral{% endif %}">
+                            {% if w.change > 0 %}+{% endif %}{{ w.change }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
             {% endif %}
         </div>
     </main>
@@ -306,133 +402,134 @@
     </footer>
 
     <!-- === SNOWFALL BACKGROUND === -->
-<canvas id="snowfall-bg" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:-1;"></canvas>
+    <canvas id="snowfall-bg" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:-1;"></canvas>
 
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-    const canvas = document.getElementById("snowfall-bg");
-    const ctx = canvas.getContext("2d");
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const canvas = document.getElementById("snowfall-bg");
+            const ctx = canvas.getContext("2d");
 
-    function resizeCanvas() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-    }
-    window.addEventListener("resize", resizeCanvas);
-    resizeCanvas();
-
-    // 🔸 Get Sharpe ratio dynamically from Django context
-    const sharpeRatio = parseFloat("{{ max_sharpe_ratio|default:0 }}");
-
-    // ❄️ Default white color and glow
-    let snowColor = "rgba(255,255,255,0.9)";
-    let glowColor = "#FFFFFF";
-
-    // 🔴 If Sharpe < 1 → red glow; 🟢 If Sharpe ≥ 1 → green glow
-    if (!isNaN(sharpeRatio)) {
-        if (sharpeRatio >= 1) {
-            snowColor = "rgba(0,255,153,0.85)";
-            glowColor = "#00FF99";
-        } else if (sharpeRatio < 1) {
-            snowColor = "rgba(255,51,102,0.85)";
-            glowColor = "#FF3366";
-        }
-    }
-
-    // 🧊 Snowflake setup
-    const snowflakes = [];
-    const numFlakes = 120; // small number for subtle snowfall
-
-    for (let i = 0; i < numFlakes; i++) {
-        snowflakes.push({
-            x: Math.random() * canvas.width,
-            y: Math.random() * canvas.height,
-            r: Math.random() * 2 + 0.5, // small radius
-            d: Math.random() * 1 + 0.5, // density/speed
-        });
-    }
-
-    function drawSnow() {
-        // Slight fade for trailing glow effect
-        ctx.fillStyle = "rgba(0, 0, 0, 1)";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        ctx.fillStyle = snowColor;
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = glowColor;
-
-        snowflakes.forEach(flake => {
-            ctx.beginPath();
-            ctx.arc(flake.x, flake.y, flake.r, 0, Math.PI * 2);
-            ctx.fill();
-        });
-
-        moveSnow();
-        requestAnimationFrame(drawSnow);
-    }
-
-    let angle = 0;
-    function moveSnow() {
-        angle += 0.01;
-        snowflakes.forEach(flake => {
-            flake.y += Math.pow(flake.d, 2) + 0.5;
-            flake.x += Math.sin(angle) * 0.5;
-
-            if (flake.y > canvas.height) {
-                flake.y = -5;
-                flake.x = Math.random() * canvas.width;
+            function resizeCanvas() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
             }
-        });
-    }
+            window.addEventListener("resize", resizeCanvas);
+            resizeCanvas();
 
-    drawSnow();
-});
+            // 🔸 Get Sharpe ratio dynamically from Django context
+            const sharpeRatio = parseFloat("{{ max_sharpe_ratio|default:0 }}");
+
+            // ❄️ Default white color and glow
+            let snowColor = "rgba(255,255,255,0.9)";
+            let glowColor = "#FFFFFF";
+
+            // 🔴 If Sharpe < 1 → red glow; 🟢 If Sharpe ≥ 1 → green glow
+            if (!isNaN(sharpeRatio)) {
+                if (sharpeRatio >= 1) {
+                    snowColor = "rgba(0,255,153,0.85)";
+                    glowColor = "#00FF99";
+                } else if (sharpeRatio < 1) {
+                    snowColor = "rgba(255,51,102,0.85)";
+                    glowColor = "#FF3366";
+                }
+            }
+
+            // 🧊 Snowflake setup
+            const snowflakes = [];
+            const numFlakes = 120; // small number for subtle snowfall
+
+            for (let i = 0; i < numFlakes; i++) {
+                snowflakes.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    r: Math.random() * 2 + 0.5, // small radius
+                    d: Math.random() * 1 + 0.5, // density/speed
+                });
+            }
+
+            function drawSnow() {
+                // Slight fade for trailing glow effect
+                ctx.fillStyle = "rgba(0, 0, 0, 1)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.fillStyle = snowColor;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = glowColor;
+
+                snowflakes.forEach(flake => {
+                    ctx.beginPath();
+                    ctx.arc(flake.x, flake.y, flake.r, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+
+                moveSnow();
+                requestAnimationFrame(drawSnow);
+            }
+
+            let angle = 0;
+            function moveSnow() {
+                angle += 0.01;
+                snowflakes.forEach(flake => {
+                    flake.y += Math.pow(flake.d, 2) + 0.5;
+                    flake.x += Math.sin(angle) * 0.5;
+
+                    if (flake.y > canvas.height) {
+                        flake.y = -5;
+                        flake.x = Math.random() * canvas.width;
+                    }
+                });
+            }
+
+            drawSnow();
+        });
 
 
 
 
     </script>
-<script>
-let lastScrollY = window.scrollY;
-let isScrollingDown = false;
+    <script>
+        let lastScrollY = window.scrollY;
+        let isScrollingDown = false;
 
-window.addEventListener("scroll", () => {
-    const header = document.getElementById("page-header");
-    const currentScroll = window.scrollY;
+        window.addEventListener("scroll", () => {
+            const header = document.getElementById("page-header");
+            const currentScroll = window.scrollY;
 
-    if (currentScroll > lastScrollY && currentScroll > 100) {
-        // 🔽 User is scrolling down — hide header
-        header.style.transform = "translateY(-100%)";
-        header.style.opacity = "0";
-    } else if (currentScroll < lastScrollY) {
-        // 🔼 User is scrolling up — show header
-        header.style.transform = "translateY(0)";
-        header.style.opacity = "1";
-    }
+            if (currentScroll > lastScrollY && currentScroll > 100) {
+                // 🔽 User is scrolling down — hide header
+                header.style.transform = "translateY(-100%)";
+                header.style.opacity = "0";
+            } else if (currentScroll < lastScrollY) {
+                // 🔼 User is scrolling up — show header
+                header.style.transform = "translateY(0)";
+                header.style.opacity = "1";
+            }
 
-    lastScrollY = currentScroll;
-});
-</script>
-<script>
-let lastScrollYFooter = window.scrollY;
+            lastScrollY = currentScroll;
+        });
+    </script>
+    <script>
+        let lastScrollYFooter = window.scrollY;
 
-window.addEventListener("scroll", () => {
-    const footer = document.getElementById("page-footer");
-    const currentScroll = window.scrollY;
+        window.addEventListener("scroll", () => {
+            const footer = document.getElementById("page-footer");
+            const currentScroll = window.scrollY;
 
-    if (currentScroll > lastScrollYFooter) {
-        // 🔽 Scrolling down → show footer
-        footer.style.transform = "translateY(0)";
-        footer.style.opacity = "1";
-    } else if (currentScroll < lastScrollYFooter) {
-        // 🔼 Scrolling up → hide footer
-        footer.style.transform = "translateY(100%)";
-        footer.style.opacity = "0.8";
-    }
+            if (currentScroll > lastScrollYFooter) {
+                // 🔽 Scrolling down → show footer
+                footer.style.transform = "translateY(0)";
+                footer.style.opacity = "1";
+            } else if (currentScroll < lastScrollYFooter) {
+                // 🔼 Scrolling up → hide footer
+                footer.style.transform = "translateY(100%)";
+                footer.style.opacity = "0.8";
+            }
 
-    lastScrollYFooter = currentScroll;
-});
-</script>
+            lastScrollYFooter = currentScroll;
+        });
+    </script>
 
 
 </body>
+
 </html>

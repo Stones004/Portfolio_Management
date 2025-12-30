@@ -1,3 +1,4 @@
+# views.py (fixed)
 import io
 import base64
 import numpy as np
@@ -6,42 +7,119 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from django.shortcuts import render
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth.decorators import login_required
 from .forms import StockFormSet
 import yfinance as yf
 
+
+from .models import Portfolio, Holding
+from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth import login
+
+def _ensure_df_close(data):
+    """
+    Ensure yf.download output has a DataFrame with 'Close' columns.
+    yfinance may return a Series for single ticker - normalize to DataFrame.
+    Return: DataFrame of close prices (columns: tickers)
+    """
+    if data is None:
+        return pd.DataFrame()
+    # if 'Close' present as level in MultiIndex columns (when download with multiple fields)
+    if isinstance(data, pd.DataFrame) and 'Close' in data.columns:
+        # sometimes data has single-level columns where 'Close' is a column name
+        close = data['Close']
+    else:
+        # If user passed tickers and we get a DataFrame with columns already being tickers (most likely)
+        # Try to extract close prices using column name 'Close' in case of multi-level
+        try:
+            close = data['Close']
+        except Exception:
+            # If data itself is the Close prices (common)
+            close = data
+
+    # If it's a Series (single ticker), convert to DataFrame
+    if isinstance(close, pd.Series):
+        close = close.to_frame(name=str(close.name) if close.name else '0')
+
+    # Drop any columns that are not numeric
+    close = close.select_dtypes(include=[np.number])
+    return close.dropna(how='all')
+
+
 def analyze_portfolio(stocks, weights):
+    """
+    Fetch data, compute returns, volatility, sharpe and histogram image (base64).
+    """
     try:
-        # Fetch stock data for the past 5 years
-        data = yf.download(stocks, period="5y")['Close']
+        raw = yf.download(stocks, period="5y", progress=False)
+        data = _ensure_df_close(raw)
         if data.empty:
-            raise ValueError("No data returned for given tickers.")
+            raise ValueError("No closing price data returned for the given tickers.")
     except Exception as e:
-        raise ValueError(f"Error fetching data: {e}")
+        raise ValueError(f"Error fetching data from yfinance: {e}")
+
+    # Align stocks order to data columns (in case some tickers were missing)
+    available_tickers = list(data.columns)
+    if not available_tickers:
+        raise ValueError("No valid tickers found in the fetched data.")
+
+    # Build arrays for only the available tickers
+    try:
+        # Map requested stocks to available columns (case-insensitive)
+        col_map = {c.upper(): c for c in data.columns}
+        chosen_cols = []
+        chosen_weights = []
+        for s, w in zip(stocks, weights):
+            if s.upper() in col_map:
+                chosen_cols.append(col_map[s.upper()])
+                chosen_weights.append(w)
+            else:
+                # skip missing ticker
+                print(f"Ticker {s} not found in fetched data — skipping.")
+        if not chosen_cols:
+            raise ValueError("None of the requested tickers returned data.")
+        data = data[chosen_cols]
+        weights = np.array(chosen_weights, dtype=float)
+    except Exception as e:
+        raise ValueError(f"Error aligning tickers to data: {e}")
+
+    # Normalize weights safely
+    sum_w = np.sum(weights)
+    if sum_w == 0 or np.isnan(sum_w):
+        raise ValueError("Sum of weights is zero or invalid.")
+    weights = weights / sum_w
 
     # Calculate daily returns
     daily_returns = data.pct_change().dropna()
+    if daily_returns.empty:
+        raise ValueError("Not enough price history to compute returns.")
 
-    # Normalize weights to ensure they sum to 1
-    weights = np.array(weights)
-    weights /= np.sum(weights)  # Ensuring weights sum to 1
+    # Annualize
+    mean_returns = daily_returns.mean() * 252
+    cov_matrix = daily_returns.cov() * 252
 
-    # Calculate mean returns and covariance matrix (annualized)
-    mean_returns = daily_returns.mean() * 252  # annualize mean returns
-    cov_matrix = daily_returns.cov() * 252  # annualize covariance matrix
+    # Portfolio return & volatility
+    portfolio_return = float(np.dot(weights, mean_returns))
+    portfolio_volatility = float(np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights))))
 
-    # Calculate portfolio return and volatility
-    portfolio_return = np.dot(weights, mean_returns)
-    portfolio_volatility = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+    # Sharpe (assume risk-free = 5)
+    sharpe_ratio = float((portfolio_return - 0.05) / portfolio_volatility) if portfolio_volatility != 0 else 0.0
 
-    # Calculate Sharpe ratio (assuming risk-free rate of 0)
-    sharpe_ratio = portfolio_return / portfolio_volatility if portfolio_volatility != 0 else 0
+    # Portfolio daily returns for histogram and risk metrics
+    portfolio_daily_returns = np.dot(daily_returns.values, weights)
+    # handle if portfolio_daily_returns empty
+    if portfolio_daily_returns.size == 0:
+        var_95 = 0.0
+        cvar_95 = 0.0
+    else:
+        # Value at Risk (VaR) at 95% confidence - potential loss (positive number)
+        var_95 = float(-np.percentile(portfolio_daily_returns, 5) * 100)
+        # Conditional VaR (CVaR/Expected Shortfall) - average loss beyond VaR
+        worst_5_percent = portfolio_daily_returns[portfolio_daily_returns <= np.percentile(portfolio_daily_returns, 5)]
+        cvar_95 = float(-np.mean(worst_5_percent) * 100) if len(worst_5_percent) > 0 else 0.0
 
-    # Calculate portfolio daily returns
-    portfolio_daily_returns = np.dot(daily_returns, weights)
-    max_daily_loss = np.percentile(portfolio_daily_returns, 5) * 100  # 5th percentile for max loss
-
-    # Generate histogram for daily returns distribution
+    # Generate histogram image (base64)
     plt.figure(figsize=(8, 4))
     plt.hist(portfolio_daily_returns, bins=50, color='#00ffcc', edgecolor='black', alpha=0.8)
     plt.title('Portfolio Daily Returns Distribution', fontsize=12, color='white')
@@ -59,155 +137,239 @@ def analyze_portfolio(stocks, weights):
     histogram_base64 = base64.b64encode(buf.read()).decode('utf-8')
     buf.close()
 
-    # Prepare details for each stock in the portfolio
+    # Prepare details for each stock
     details = []
-    for i, s in enumerate(stocks):
+    for i, col in enumerate(data.columns):
+        mean_pct = float(mean_returns.iloc[i] * 100) if i < len(mean_returns) else 0.0
+        vol_pct = float(np.sqrt(cov_matrix.iloc[i, i]) * 100) if i < cov_matrix.shape[0] else 0.0
         details.append({
-            "symbol": s,
-            "weight": round(weights[i], 4),
-            "mean": round(mean_returns.iloc[i] * 100, 2),
-            "vol": round(np.sqrt(cov_matrix.iloc[i, i]) * 100, 2)
+            "symbol": col,
+            "weight": round(float(weights[i]), 4),
+            "mean": round(mean_pct, 2),
+            "vol": round(vol_pct, 2)
         })
 
     return {
         "portfolio_return": round(portfolio_return * 100, 2),
         "portfolio_volatility": round(portfolio_volatility * 100, 2),
         "sharpe": round(sharpe_ratio, 2),
-        "max_daily_loss": round(max_daily_loss, 2),
+        "var_95": round(var_95, 2),
+        "cvar_95": round(cvar_95, 2),
         "details": details,
-        "histogram": histogram_base64
+        "histogram": histogram_base64,
     }
 
+@login_required
 def home(request):
-    # Handle GET request (show empty formset)
-    if request.method == "GET":
+    user = request.user
+    portfolios = Portfolio.objects.filter(user=user)
+
+    # ----------------------------
+    # Portfolio selection (GET)
+    # ----------------------------
+    portfolio_id = request.GET.get("portfolio_id")
+    selected_portfolio = None
+
+    if portfolio_id:
+        selected_portfolio = Portfolio.objects.filter(
+            id=portfolio_id,
+            user=user
+        ).first()
+
+    # ----------------------------
+    # Default formset
+    # ----------------------------
+    if selected_portfolio:
+        initial_data = [
+            {"symbol": h.symbol, "weight": h.weight}
+            for h in selected_portfolio.holdings.all()
+        ]
+        formset = StockFormSet(initial=initial_data)
+    else:
         formset = StockFormSet()
-        return render(request, "stockapp/index.html", {"formset": formset})
 
-    # Handle POST request for file upload or portfolio analysis
+    # ----------------------------
+    # GET → render page
+    # ----------------------------
+    if request.method == "GET":
+        return render(request, "stockapp/index.html", {
+            "formset": formset,
+            "portfolios": portfolios,
+            "selected_portfolio": selected_portfolio,
+        })
+
+    # ----------------------------
+    # POST actions
+    # ----------------------------
     action = request.POST.get("action")
-    print(action)
 
+    # 🟩 Upload CSV / Excel
     if action == "upload_file":
-        formset = StockFormSet()  # Blank formset for now (will be replaced if file is loaded)
         uploaded_file = request.FILES.get("file")
+
         if not uploaded_file:
-            return render(request, "stockapp/index.html", {"formset": formset, "error": "No file selected."})
+            return render(request, "stockapp/index.html", {
+                "formset": formset,
+                "portfolios": portfolios,
+                "selected_portfolio": selected_portfolio,
+                "error": "No file selected."
+            })
 
         try:
-            # Read file content
             if uploaded_file.name.endswith(".csv"):
                 df = pd.read_csv(uploaded_file)
             elif uploaded_file.name.endswith((".xls", ".xlsx")):
                 df = pd.read_excel(uploaded_file)
             else:
-                return render(request, "stockapp/index.html", {"formset": formset, "error": "Unsupported file type. Use .csv/.xlsx."})
+                raise ValueError("Unsupported file type")
 
-            # Normalize column names and ensure the required columns are present
             df.columns = df.columns.str.lower().str.strip()
             if not {"symbol", "weight"}.issubset(df.columns):
-                return render(request, "stockapp/index.html", {"formset": formset, "error": "File needs 'symbol' and 'weight' columns."})
+                raise ValueError("CSV must contain symbol and weight")
 
-            # Process rows and append valid ones
-            initial_data = []
-            for _, row in df.iterrows():
-                try:
-                    initial_data.append({
-                        "symbol": str(row["symbol"]).strip().upper(),
-                        "weight": float(row["weight"])
-                    })
-                except ValueError:
-                    # Skip rows with invalid data
-                    continue
-
-            if not initial_data:
-                return render(request, "stockapp/index.html", {"formset": formset, "error": "No valid rows in file."})
+            initial_data = [
+                {"symbol": str(r.symbol).upper(), "weight": float(r.weight)}
+                for r in df.itertuples()
+            ]
 
             formset = StockFormSet(initial=initial_data)
-            return render(request, "stockapp/index.html", {"formset": formset, "message": f"Loaded {len(initial_data)} stocks from file."})
+
+            return render(request, "stockapp/index.html", {
+                "formset": formset,
+                "portfolios": portfolios,
+                "selected_portfolio": selected_portfolio,
+                "message": f"Loaded {len(initial_data)} stocks from file."
+            })
 
         except Exception as e:
-            return render(request, "stockapp/index.html", {"formset": formset, "error": f"Error reading file: {e}"})
+            return render(request, "stockapp/index.html", {
+                "formset": formset,
+                "portfolios": portfolios,
+                "selected_portfolio": selected_portfolio,
+                "error": str(e)
+            })
 
+    # 🟦 Analyze portfolio
     elif action == "analyze":
-        # Process form submission for portfolio analysis
         formset = StockFormSet(request.POST)
+
         if not formset.is_valid():
-            errors = []
-            for i, f in enumerate(formset):
-                if f.errors:
-                    errors.append(f"Row {i + 1}: {f.errors.as_text()}")
-            # Debug output for errors
-            print(errors)
-            return render(request, "stockapp/index.html", {"formset": formset, "error": "Invalid input. Please fix highlighted fields.", "details_errors": errors})
+            return render(request, "stockapp/index.html", {
+                "formset": formset,
+                "portfolios": portfolios,
+                "selected_portfolio": selected_portfolio,
+                "error": "Invalid input."
+            })
 
-        # Extract stock symbols and weights from the formset
-        stocks = []
-        weights = []
-        for form in formset:
-            symbol = form.cleaned_data.get("symbol")
-            weight = form.cleaned_data.get("weight")
-            if symbol and weight is not None:
-                print(f"Extracted symbol: {symbol}, weight: {weight}")  # Debug output
-                stocks.append(symbol.upper())
-                weights.append(weight)
-
-        if not stocks:
-            return render(request, "stockapp/index.html", {"formset": formset, "error": "Please add at least one stock."})
+        stocks, weights = [], []
+        for f in formset:
+            if f.cleaned_data:
+                stocks.append(f.cleaned_data["symbol"].upper())
+                weights.append(f.cleaned_data["weight"])
 
         total_weight = sum(weights)
-        if total_weight <= 0:
-            return render(request, "stockapp/index.html", {"formset": formset, "error": "Total weight must be > 0."})
-
-        # Normalize weights
         weights = [w / total_weight for w in weights]
 
-        # Analyze portfolio and render results
         try:
             results = analyze_portfolio(stocks, weights)
+
             context = {
                 "formset": formset,
+                "portfolios": portfolios,
+                "selected_portfolio": selected_portfolio,
                 "symbols": ",".join(stocks),
-                "weights": ",".join(str(w) for w in weights),
+                "weights": ",".join(map(str, weights)),
             }
             context.update(results)
+
             return render(request, "stockapp/index.html", context)
+
         except Exception as e:
-            return render(request, "stockapp/index.html", {"formset": formset, "error": f"Error analyzing portfolio: {e}"})
+            return render(request, "stockapp/index.html", {
+                "formset": formset,
+                "portfolios": portfolios,
+                "selected_portfolio": selected_portfolio,
+                "error": str(e)
+            })
 
-    else:
-        # If action is unknown
-        formset = StockFormSet(request.POST or None)
-        return render(request, "stockapp/index.html", {"formset": formset, "error": "Unknown action."})
-
-
-def efficient_frontier(request):
-    context = {}
-
-    # 🟩 Case 1: Coming from "Optimizer" button (POST with symbols & weights)
-    if request.method == "POST" and request.POST.get("symbols") and request.POST.get("weights"):
+    elif action == "save_portfolio":
+        portfolio_name = request.POST.get("portfolio_name")
         symbols = request.POST.get("symbols")
         weights = request.POST.get("weights")
-        risk_free_rate = float(request.POST.get("risk_free_rate", 0.05))
+
+        if not portfolio_name or not symbols or not weights:
+            return render(request, "stockapp/index.html", {
+            "formset": formset,
+            "portfolios": portfolios,
+            "error": "Missing portfolio data."
+        })
+
+        symbols = symbols.split(",")
+        weights = list(map(float, weights.split(",")))
+
+        # ✅ Create NEW portfolio (never overwrite silently)
+        portfolio = Portfolio.objects.create(
+            user=request.user,
+            name=portfolio_name
+        )
+
+        for s, w in zip(symbols, weights):
+            Holding.objects.create(
+                portfolio=portfolio,
+                symbol=s,
+                weight=w
+            )
+
+        return redirect("home")
+
+    # 🟨 Fallback
+    return render(request, "stockapp/index.html", {
+        "formset": formset,
+        "portfolios": portfolios,
+        "selected_portfolio": selected_portfolio,
+        "error": "Unknown action."
+    })
+
+
+
+
+@login_required
+def efficient_frontier(request):
+    """
+    Efficient frontier view. Accepts POST with 'symbols' & 'weights' OR file upload.
+    """
+    context = {}
+    user = request.user
+    context["portfolios"] = Portfolio.objects.filter(user=user)
+
+    # Case 1: From 'Optimizer' with symbols & weights
+    if request.method == "POST" and request.POST.get("symbols") and request.POST.get("weights") and not request.FILES.get("file"):
+        symbols = request.POST.get("symbols")
+        weights = request.POST.get("weights")
+        try:
+            risk_free_rate = float(request.POST.get("risk_free_rate", 0.05))
+        except Exception:
+            risk_free_rate = 0.05
 
         try:
-            stocks = [s.strip().upper() for s in symbols.split(",")]
-            weights = [float(w.strip()) for w in weights.split(",")]
+            stocks = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+            weights = [float(w.strip()) for w in weights.split(",") if w.strip()]
 
-            # ✅ Fetch stock data
-            data = yf.download(stocks, period="5y")['Close']
+            raw = yf.download(stocks, period="5y", progress=False)
+            data = _ensure_df_close(raw)
             if data.empty:
                 context["error"] = "No valid stock data returned."
                 return render(request, "stockapp/efficient_frontier.html", context)
 
             new_returns = data.pct_change().dropna()
-            opt_returns = new_returns.drop(columns=['Daily_returns'], errors='ignore')
+            opt_returns = new_returns  # no need to drop 'Daily_returns' here; defensive below
 
             mean_returns = opt_returns.mean() * 252
             cov_matrix = opt_returns.cov() * 252
             num_assets = len(opt_returns.columns)
             num_portfolios = 50000
 
+            # Pre-alloc
             results = np.zeros((3, num_portfolios))
             weights_record = []
 
@@ -216,8 +378,8 @@ def efficient_frontier(request):
                 ex_weights /= np.sum(ex_weights)
                 port_return = np.dot(ex_weights, mean_returns)
                 port_std = np.sqrt(np.dot(ex_weights.T, np.dot(cov_matrix, ex_weights)))
-                sharpe = (port_return - risk_free_rate) / port_std
-
+                # guard against zero volatility
+                sharpe = (port_return - risk_free_rate) / port_std if port_std != 0 else 0
                 results[0, i] = port_return
                 results[1, i] = port_std
                 results[2, i] = sharpe
@@ -230,10 +392,8 @@ def efficient_frontier(request):
             max_sharpe_ratio = results[2, max_sharpe_idx]
             best_weights = weights_record[max_sharpe_idx]
 
-            # 🟩 Create optimized weight DataFrame
             best_portfolio = pd.DataFrame(best_weights, index=opt_returns.columns, columns=['Weight']).sort_values(by='Weight', ascending=False)
 
-            # 🟩 Compare old vs new weights
             original_weights_dict = dict(zip(stocks, weights))
             weight_changes = []
             for symbol in opt_returns.columns:
@@ -248,7 +408,7 @@ def efficient_frontier(request):
                 })
             weight_changes = sorted(weight_changes, key=lambda x: x["new_weight"], reverse=True)
 
-            # 🟩 Plot Efficient Frontier
+            # Plot efficient frontier
             plt.figure(figsize=(10, 6))
             plt.scatter(results[1, :], results[0, :], c=results[2, :], cmap='viridis', alpha=0.6)
             plt.colorbar(label='Sharpe Ratio')
@@ -265,7 +425,6 @@ def efficient_frontier(request):
             buf.close()
             plt.close()
 
-            # 🟩 Update context
             context.update({
                 "frontier_plot": frontier_plot,
                 "best_portfolio": best_portfolio.to_dict(orient='index'),
@@ -277,21 +436,19 @@ def efficient_frontier(request):
                 "weights": weights,
                 "risk_free_rate": risk_free_rate,
             })
-
         except Exception as e:
             context["error"] = f"Error generating efficient frontier: {e}"
-            print("Error:", e)
+            print("Efficient frontier error:", e)
 
         return render(request, "stockapp/efficient_frontier.html", context)
 
-    # 🟨 Case 2: User visits page directly (GET request)
+    # Case 2: GET -> show page
     if request.method == "GET":
         return render(request, "stockapp/efficient_frontier.html", context)
 
-    # 🟦 Case 3: Manual CSV Upload
+    # Case 3: File upload for frontier
     if request.method == "POST" and request.FILES.get("file"):
         uploaded_file = request.FILES["file"]
-
         try:
             if uploaded_file.name.endswith(".csv"):
                 df = pd.read_csv(uploaded_file)
@@ -317,3 +474,115 @@ def efficient_frontier(request):
 
     return render(request, "stockapp/efficient_frontier.html", context)
 
+
+def register(request):
+    """
+    Simple registration view using Django's built-in UserCreationForm.
+    """
+    if request.method == "POST":
+        form = UserCreationForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            login(request, user)  # auto login after register
+            return redirect("home")
+    else:
+        form = UserCreationForm()
+    return render(request, "stockapp/register.html", {"form": form})
+
+def dcf_view(request):
+
+    return render(request, "stockapp/dcf.html")
+
+from mydcf import DCF_Valuation
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+import WACC as wacc
+
+
+def dcf_view(request):
+    result = None
+    error = None
+    ticker = ""
+
+    show_inputs = False
+    input_params = {}
+
+    # 👇 pull originals from session (if they exist)
+    original_params = request.session.get("original_params", {})
+
+    if request.method == "POST":
+        try:
+            ticker = request.POST.get("ticker")
+            model = DCF_Valuation(ticker)
+
+            # ====================================================
+            # FIRST RUN → MAIN DCF
+            # ====================================================
+            if "wacc" not in request.POST:
+                wacc_model = wacc.WACCModel(ticker=ticker)
+                wacc_value = wacc_model.wacc()
+
+                ev, proj, params = model.project_fcff(wacc_value)
+                eq_val, per_share = model.equity_value(ev)
+
+                result = {
+                    "enterprise_value": ev,
+                    "equity_value": eq_val,
+                    "per_share_value": per_share,
+                    "dcf_table": proj
+                }
+
+                # ORIGINAL (model-derived, frozen)
+                original_params = {
+                    "wacc": round(params["wacc"] * 100, 2),
+                    "growth_rate": round(params["growth_rate"] * 100, 2),
+                    "reinvestment_rate": round(params["reinvestment_rate"] * 100, 2),
+                    "terminal_growth": round(params["terminal_growth"] * 100, 2),
+                    "years": params["years"]
+                }
+
+                # 🔒 store originals in session
+                request.session["original_params"] = original_params
+
+                # Editable inputs start equal to originals
+                input_params = original_params.copy()
+
+                show_inputs = True
+
+            # ====================================================
+            # SUBSEQUENT RUNS → RAW DCF
+            # ====================================================
+            else:
+                input_params = {
+                    "wacc": float(request.POST.get("wacc")),
+                    "growth_rate": float(request.POST.get("growth_rate")),
+                    "reinvestment_rate": float(request.POST.get("reinvestment_rate")),
+                    "terminal_growth": float(request.POST.get("terminal_growth")),
+                    "years": int(request.POST.get("years"))
+                }
+
+                result = model.run_raw_dcf(
+                    wacc=input_params["wacc"] / 100,
+                    growth_rate=input_params["growth_rate"] / 100,
+                    reinvestment_rate=input_params["reinvestment_rate"] / 100,
+                    terminal_growth=input_params["terminal_growth"] / 100,
+                    years=input_params["years"]
+                )
+
+                show_inputs = True
+
+        except Exception as e:
+            error = str(e)
+
+    return render(
+        request,
+        "stockapp/dcf.html",
+        {
+            "ticker": ticker,
+            "result": result,
+            "error": error,
+            "show_inputs": show_inputs,
+            "input_params": input_params,
+            "original_params": original_params
+        }
+    )
