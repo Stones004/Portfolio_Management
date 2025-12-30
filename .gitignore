@@ -5,10 +5,10 @@
 __pycache__/
 *.pyc
 
-# Virtual env
+# Virtual environments
 venv/
 env/
 
-# OS
-.DS_Store
-Thumbs.db
+# Django
+db.sqlite3
+staticfiles/
