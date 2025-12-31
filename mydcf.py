@@ -60,13 +60,14 @@ class DCF_Valuation:  # Fixed spelling
         results = self.fcff()
         latest_year = results.index[0]
         base_nopat = results.loc[latest_year, 'NOPAT']
-        reinvestment_rate = min(results['Reinvestment_Rate'].median(), 0.65)  # Cap at 80%
+        reinvestment_rate = min(results['Reinvestment_Rate'].median(), .35)  # Cap at 80%
         roic = results['ROIC'].median()    
         growth_rate = reinvestment_rate * roic
         
         print(f"Base NOPAT: ₹{base_nopat/1e9:.0f}B")
         print(f"Growth Rate: {growth_rate:.1%}")
         print(f"Reinvestment Rate: {reinvestment_rate:.0%}")
+        print(f"ROIC: {roic:.1%}")
 
         projections = []
         for t in range(1, int(years)+1):
@@ -123,120 +124,6 @@ class DCF_Valuation:  # Fixed spelling
     
         return equity_value, per_share
 
-    #--------------- FCFF Scenarios -------------------
-    def project_fcff_scenarios(self, wacc, years=5):
-        base_df = self.fcff()
-
-        base_nopat = base_df.iloc[0]['NOPAT']
-        base_roic = base_df['ROIC'].median()
-        base_reinv = base_df['Reinvestment_Rate'].median()
-
-        results = {}
-
-        for name, s in SCENARIOS.items():
-            roic = base_roic * s["roic_mult"]
-            reinv_rate = base_reinv * s["reinv_mult"]
-            growth = roic * reinv_rate
-
-            projections = []
-            for t in range(1, years + 1):
-                nopat = base_nopat * (1 + growth) ** t
-                reinvestment = nopat * reinv_rate
-                fcff = nopat - reinvestment
-                pv = fcff / (1 + wacc) ** (t - 0.5)
-
-                projections.append(pv)
-
-            terminal_g = min(0.03, wacc - 0.03)
-            terminal_fcff = fcff * (1 + terminal_g)
-            terminal_value = terminal_fcff / (wacc - terminal_g)
-            pv_tv = terminal_value / (1 + wacc) ** years
-
-            ev = sum(projections) + pv_tv
-            results[name] = ev
-
-        return results
-
-    #--------------- Equity Value Scenarios -------------------
-    def equity_value_scenarios(self, ev_dict):
-        stock = yf.Ticker(self.ticker)
-        bs = stock.balance_sheet
-        year = bs.columns[0]
-
-        cash = bs.loc["Cash And Cash Equivalents", year]
-        debt = bs.loc["Total Debt", year]
-        shares = stock.info["sharesOutstanding"]
-
-        out = {}
-        for k, ev in ev_dict.items():
-            eq = ev + cash - debt
-            out[k] = eq / shares
-
-        return out
-    
-
-        """
-        Single-run raw DCF.
-        All inputs are provided once via a dictionary.
-        """
-
-        required = [
-            "base_nopat",
-            "growth_rate",
-            "reinvestment_rate",
-            "wacc",
-            "terminal_growth",
-            "years",
-            "cash",
-            "debt",
-            "shares_outstanding"
-        ]
-
-        missing = [k for k in required if k not in inputs]
-        if missing:
-            raise ValueError(f"Missing inputs: {missing}")
-
-        base_nopat = inputs["base_nopat"]
-        growth = inputs["growth_rate"]
-        reinv = inputs["reinvestment_rate"]
-        wacc = inputs["wacc"]
-        tg = inputs["terminal_growth"]
-        years = inputs["years"]
-
-        projections = []
-
-        for t in range(1, years + 1):
-            nopat = base_nopat * (1 + growth) ** t
-            reinvestment = nopat * reinv
-            fcff = nopat - reinvestment
-            pv_fcff = fcff / (1 + wacc) ** (t - 0.5)
-
-            projections.append({
-                "Year": t,
-                "NOPAT": nopat,
-                "Reinvestment": reinvestment,
-                "FCFF": fcff,
-                "PV_FCFF": pv_fcff
-            })
-
-        df = pd.DataFrame(projections)
-
-        terminal_fcff = df.iloc[-1]["FCFF"] * (1 + tg)
-        terminal_value = terminal_fcff / (wacc - tg)
-        pv_terminal = terminal_value / (1 + wacc) ** years
-
-        enterprise_value = df["PV_FCFF"].sum() + pv_terminal
-        equity_value = enterprise_value + inputs["cash"] - inputs["debt"]
-        per_share_value = equity_value / inputs["shares_outstanding"]
-
-        return {
-            "Enterprise Value": enterprise_value,
-            "Equity Value": equity_value,
-            "Per Share Value": per_share_value,
-            "PV Terminal Value": pv_terminal,
-            "DCF Table": df
-        }
-
     def run_raw_dcf(self, wacc, growth_rate, reinvestment_rate, terminal_growth, years=5):
         """
         Raw DCF using fcff() as the base source.
@@ -292,21 +179,7 @@ class DCF_Valuation:  # Fixed spelling
 
 
 # FIXED Usage:
-ticker = "hindalco.NS" # [INFY.NS, TCS.NS, WIPRO.NS, GESHIP.NS, RELIANCE.NS, TATAMOTORS.NS, JINDALSTEL.NS, bhel.NS, ]
-SCENARIOS = {
-    "Base": {
-        "roic_mult": 1.00,
-        "reinv_mult": 1.00
-    },
-    "Bull": {
-        "roic_mult": 1.20,   # efficiency improves
-        "reinv_mult": 0.75   # capital discipline improves
-    },
-    "Bear": {
-        "roic_mult": 0.80,
-        "reinv_mult": 1.10
-    }
-}
+ticker = "tvsmotor.NS" # [INFY.NS, TCS.NS, WIPRO.NS, GESHIP.NS, RELIANCE.NS, TATAMOTORS.NS, JINDALSTEL.NS, bhel.NS, ]
 
 model_wacc = wacc.WACCModel(ticker=ticker)
 print(f'Stock selected: {ticker}')
@@ -318,20 +191,4 @@ print(f"\nFinal EV: ₹{ev/1e9:.0f}B")
 print(f"Final Equity Value: ₹{eq_val/1e9:.0f}B")
 print(f"Final Per Share: ₹{per_share:.0f}")
 #print(model.infy_diagnostics())
-
-#--------------- FCFF Scenarios -------------------
-ev_dict = model.project_fcff_scenarios(wacc_value)
-eq_dict = model.equity_value_scenarios(ev_dict)
-print("\nFCFF Scenarios:")
-print(ev_dict)
-print("\nEquity Value Scenarios:")
-print(eq_dict)
-
-metrics = {}
-metrics['Final EV'] = ev
-metrics['Final Equity Value'] = eq_val
-metrics['Final Per Share'] = per_share 
-
-#return metrics
-
 
