@@ -92,7 +92,7 @@ WSGI_APPLICATION = 'stocksite.wsgi.application'
     }
 } '''
 
-'''DATABASES = {
+DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': os.environ.get('DB_NAME'),
@@ -101,14 +101,15 @@ WSGI_APPLICATION = 'stocksite.wsgi.application'
         'HOST': os.environ.get('DB_HOST'),
         'PORT': os.environ.get('DB_PORT'),
     }
-} '''
+} 
 
-DATABASES = {
+
+'''DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "db.sqlite3",
     }
-}
+}'''
 
 
 

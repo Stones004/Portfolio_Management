@@ -8,7 +8,7 @@ class WACCModel:
     def __init__(
         self,
         ticker,
-        year=datetime.now().year,
+        year = datetime.now().year - 1 if datetime.now().month < 4 else datetime.now().year,
         risk_free=0.06,
         tax_rate=0.30,
         market_index="^NSEI"
