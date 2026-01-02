@@ -340,42 +340,72 @@
         <div class="container">
             <h1>Efficient Frontier Optimizer</h1>
 
+            <!-- ========================= -->
+            <!-- FILE UPLOAD FORM -->
+            <!-- ========================= -->
             {% if not frontier_plot %}
-            <p>Upload a CSV file (columns: symbol, weight) to generate the Efficient Frontier, or access this page via
-                the Optimizer button from the main analyzer.</p>
-            <form method="POST" enctype="multipart/form-data">
-                {% csrf_token %}
-                <input type="file" name="file" accept=".csv,.xlsx"><br>
-                <label for="risk_free_rate">Risk-Free Rate:</label>
-                <input type="number" step="0.01" name="risk_free_rate" id="risk_free_rate"
-                    value="{{ request.POST.risk_free_rate|default:0.05 }}" style="width:80px;">
-                <button type="submit">Upload and Analyze</button>
-            </form>
-            {% if error %}
-            <p style="color:red;">{{ error }}</p>
-            {% elif message %}
-            <p style="color:#00ffcc;">{{ message }}</p>
-            {% endif %}
-            {% endif %}
-
-            {% if frontier_plot %}
-            <img src="data:image/png;base64,{{ frontier_plot }}" alt="Efficient Frontier Chart">
-
-            <h1 style="color: #ff66cc; text-shadow: 0 0 10px #ff66cc;">Optimal Portfolio (Max Sharpe)</h1>
-            <p style="font-size: 18px; line-height: 1.6; text-align: center; margin-top: 10px;">
-                Expected Annual Return: <b style="color:#00ffcc;">{{ max_sharpe_return }}%</b><br>
-                Volatility: <b style="color:#ffcc00;">{{ max_sharpe_std }}%</b><br>
-                Sharpe Ratio: <b style="color:#ff66cc;">{{ max_sharpe_ratio }}</b><br>
-                Risk-Free Rate: <b style="color:#ffffff;">{{ risk_free_rate }}</b>
+            <p>
+                Upload a CSV / Excel file with columns:
+                <b>symbol</b>, <b>weight</b>
             </p>
 
-            <h3>Weight Adjustment Summary</h3>
+            <form method="POST" enctype="multipart/form-data">
+                {% csrf_token %}
+                <input type="file" name="file" accept=".csv,.xlsx" required><br>
+
+                <label for="risk_free_rate">Risk-Free Rate:</label>
+                <input type="number" step="0.01" name="risk_free_rate"
+                    value="{{ request.POST.risk_free_rate|default:0.05 }}" style="width:90px;">
+
+                <br><br>
+                <button type="submit">🚀 Run Optimization</button>
+            </form>
+
+            {% if message %}
+            <p style="color:#00ffcc;">{{ message }}</p>
+            {% endif %}
+
+            {% if error %}
+            <p style="color:#ff5555;">{{ error }}</p>
+            {% endif %}
+            {% endif %}
+
+            <!-- ========================= -->
+            <!-- FRONTIER VISUALIZATION -->
+            <!-- ========================= -->
+            {% if frontier_plot %}
+            <h3>Efficient Frontier</h3>
+            <img src="data:image/png;base64,{{ frontier_plot }}" alt="Efficient Frontier">
+
+            <!-- ========================= -->
+            <!-- PORTFOLIO METRICS -->
+            <!-- ========================= -->
+            {% if portfolio_metrics %}
+            <h3>Optimal Portfolio Metrics</h3>
+            <p style="font-size:17px;line-height:1.7;">
+                Expected Return:
+                <b class="text-positive">{{ portfolio_metrics.return }}%</b><br>
+
+                Volatility:
+                <b style="color:#ffcc00;">{{ portfolio_metrics.volatility }}%</b><br>
+
+                Sharpe Ratio:
+                <b style="color:#ff66cc;">{{ portfolio_metrics.sharpe }}</b>
+            </p>
+            {% endif %}
+
+            <!-- ========================= -->
+            <!-- OPTIMAL WEIGHTS TABLE -->
+            <!-- ========================= -->
+            {% if weight_changes %}
+            <h3>Weight Reallocation Summary</h3>
+
             <table>
                 <thead>
                     <tr>
-                        <th>Symbol</th>
-                        <th>Old Weight</th>
-                        <th>New Weight</th>
+                        <th>Asset</th>
+                        <th>Original Weight</th>
+                        <th>Optimized Weight</th>
                         <th>Change</th>
                     </tr>
                 </thead>
@@ -385,17 +415,33 @@
                         <td>{{ w.symbol }}</td>
                         <td>{{ w.old_weight }}</td>
                         <td>{{ w.new_weight }}</td>
-                        <td
-                            class="{% if w.change > 0 %}text-positive{% elif w.change < 0 %}text-negative{% else %}text-neutral{% endif %}">
-                            {% if w.change > 0 %}+{% endif %}{{ w.change }}
+                        <td class="
+                {% if w.change > 0 %}
+                    text-positive
+                {% elif w.change < 0 %}
+                    text-negative
+                {% else %}
+                    text-neutral
+                {% endif %}
+            ">
+                            {% if w.change > 0 %}+{% endif %}
+                            {{ w.change }}
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
             {% endif %}
+
+
+            <br>
+            <a href="{% url 'efficient_frontier' %}">
+                <button>🔄 Run Another Optimization</button>
+            </a>
+            {% endif %}
         </div>
     </main>
+
 
     <footer id="page-footer">
         <p>© 2025 StockVision | Tracking Bulls, Bears & Beyond 🚀</p>

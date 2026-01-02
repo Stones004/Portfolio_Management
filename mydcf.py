@@ -180,7 +180,7 @@ class DCF_Valuation:  # Fixed spelling
 
 
 # FIXED Usage:
-ticker = "geship.NS" # [INFY.NS, TCS.NS, WIPRO.NS, GESHIP.NS, RELIANCE.NS, TATAMOTORS.NS, JINDALSTEL.NS, bhel.NS, ]
+ticker = "paradeep.NS" # [INFY.NS, TCS.NS, WIPRO.NS, GESHIP.NS, RELIANCE.NS, TATAMOTORS.NS, JINDALSTEL.NS, bhel.NS, ]
 
 model_wacc = wacc.WACCModel(ticker=ticker)
 print(f'Stock selected: {ticker}')

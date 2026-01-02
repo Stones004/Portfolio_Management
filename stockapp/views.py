@@ -330,7 +330,7 @@ def home(request):
         "error": "Unknown action."
     })
 
-
+from efficient_frontier import compute_efficient_frontier
 
 
 @login_required
@@ -445,34 +445,138 @@ def efficient_frontier(request):
     # Case 2: GET -> show page
     if request.method == "GET":
         return render(request, "stockapp/efficient_frontier.html", context)
-
-    # Case 3: File upload for frontier
+    # --------------------------------------------------
+    # Case 3: File upload → Efficient Frontier (FIXED)
+    # --------------------------------------------------
     if request.method == "POST" and request.FILES.get("file"):
         uploaded_file = request.FILES["file"]
+
         try:
+            # 1. Read file
             if uploaded_file.name.endswith(".csv"):
                 df = pd.read_csv(uploaded_file)
             elif uploaded_file.name.endswith((".xls", ".xlsx")):
                 df = pd.read_excel(uploaded_file)
             else:
-                context["error"] = "Unsupported file type. Please upload CSV or Excel."
-                return render(request, "stockapp/efficient_frontier.html", context)
+                raise ValueError("Unsupported file type. Upload CSV or Excel.")
 
+            # 2. Normalize columns
             df.columns = df.columns.str.lower().str.strip()
             if not {"symbol", "weight"}.issubset(df.columns):
-                context["error"] = "CSV must contain 'symbol' and 'weight' columns."
-                return render(request, "stockapp/efficient_frontier.html", context)
+                raise ValueError("File must contain 'symbol' and 'weight' columns.")
 
-            context["symbols"] = ",".join(df["symbol"].astype(str))
-            context["weights"] = ",".join(df["weight"].astype(str))
-            context["message"] = f"Loaded {len(df)} symbols from file. Click Analyze to optimize."
+            # 3. Clean
+            df["symbol"] = df["symbol"].astype(str).str.upper().str.strip()
+            df["weight"] = pd.to_numeric(df["weight"], errors="coerce")
+            df = df.dropna()
+
+            if len(df) < 2:
+                raise ValueError("At least two assets are required.")
+
+            # 4. Normalize weights
+            weights = df["weight"].values
+            weights = weights / weights.sum()
+            symbols = df["symbol"].tolist()
+
+            # 5. Prices
+            raw = yf.download(symbols, period="5y", progress=False)
+            prices = _ensure_df_close(raw)
+
+            prices = prices.dropna(axis=1, thresh=2)
+            if prices.shape[1] < 2:
+                raise ValueError("Not enough overlapping price history.")
+
+            returns = prices.pct_change().dropna()
+            if returns.empty:
+                raise ValueError("Not enough data to compute returns.")
+
+            # 6. Monte-Carlo Frontier
+            risk_free_rate = float(request.POST.get("risk_free_rate", 0.05))
+            mean_returns = returns.mean() * 252
+            cov_matrix = returns.cov() * 252
+
+            num_assets = len(returns.columns)
+            num_portfolios = 30000
+
+            results = np.zeros((3, num_portfolios))
+            weight_record = []
+
+            for i in range(num_portfolios):
+                w = np.random.random(num_assets)
+                w /= w.sum()
+                ret = np.dot(w, mean_returns)
+                vol = np.sqrt(np.dot(w.T, np.dot(cov_matrix, w)))
+                sharpe = (ret - risk_free_rate) / vol if vol != 0 else 0
+
+                results[0, i] = ret
+                results[1, i] = vol
+                results[2, i] = sharpe
+                weight_record.append(w)
+
+            max_idx = np.argmax(results[2])
+            best_weights = weight_record[max_idx]
+
+            # 7. Build outputs expected by template
+            best_portfolio = pd.DataFrame(
+                best_weights,
+                index=returns.columns,
+                columns=["Weight"]
+            ).sort_values("Weight", ascending=False)
+
+            # Original weights dict (from uploaded file)
+            original_weights = dict(zip(df["symbol"], weights))
+
+            # Build weight comparison
+            weight_changes = []
+
+            for asset in best_portfolio.index:
+                old_w = original_weights.get(asset, 0.0)
+                new_w = float(best_portfolio.loc[asset, "Weight"])
+                change = new_w - old_w
+
+                weight_changes.append({
+                    "symbol": asset,
+                    "old_weight": round(old_w, 4),
+                    "new_weight": round(new_w, 4),
+                    "change": round(change, 4)
+                })
+
+
+            # 8. Plot frontier
+            plt.figure(figsize=(10, 6))
+            plt.scatter(results[1], results[0], c=results[2], cmap="viridis", alpha=0.5)
+            plt.scatter(results[1, max_idx], results[0, max_idx], c="red", s=120, marker="*")
+            plt.xlabel("Volatility")
+            plt.ylabel("Expected Return")
+            plt.title("Efficient Frontier")
+
+            buf = io.BytesIO()
+            plt.savefig(buf, format="png")
+            plt.close()
+            buf.seek(0)
+            frontier_plot = base64.b64encode(buf.read()).decode()
+
+            # 9. Context
+            context.update({
+            "frontier_plot": frontier_plot,
+            "best_portfolio": best_portfolio.to_dict(orient="index"),
+            "weight_changes": weight_changes,
+            "portfolio_metrics": {
+                "return": round(results[0, max_idx] * 100, 2),
+                "volatility": round(results[1, max_idx] * 100, 2),
+                "sharpe": round(results[2, max_idx], 3),
+            },
+            "message": f"Efficient Frontier computed for {num_assets} assets.",
+            "risk_free_rate": risk_free_rate
+        })
+
 
         except Exception as e:
-            context["error"] = f"Error reading file: {e}"
+            context["error"] = str(e)
 
         return render(request, "stockapp/efficient_frontier.html", context)
 
-    return render(request, "stockapp/efficient_frontier.html", context)
+
 
 
 def register(request):
