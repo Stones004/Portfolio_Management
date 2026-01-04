@@ -12,3 +12,5 @@ env/
 # Django
 db.sqlite3
 staticfiles/
+stockapp/__pycache__/views.cpython-311.pyc
+stocksite/settings.py

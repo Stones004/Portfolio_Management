@@ -34,4 +34,13 @@ class StockForm(forms.Form):
         })
     )
 
+    view = forms.FloatField(
+        required=False,
+        widget=forms.NumberInput(attrs={
+            "step": "any",
+            "placeholder": "0.03 = 3%",
+            "style": "width:120px;"
+        })
+    )
+
 StockFormSet = formset_factory(StockForm, extra=1,can_delete=True)
