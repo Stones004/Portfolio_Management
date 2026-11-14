@@ -1,19 +1,17 @@
+"""Hierarchical Risk Parity (Lopez de Prado). Research module - not wired into the web app yet.
+See docs/hrp_notes.md for the step-by-step maths."""
 import numpy as np
 import pandas as pd
-from yfinance import Ticker
-import yfinance as yf
 from scipy.cluster.hierarchy import linkage
 from scipy.spatial.distance import squareform
-from data_utils import ensure_df_close
-import matplotlib.pyplot as plt
+
+from .market_data import download_closes
 
 
 class HRP :
 
     def returns(self,tickers):
-        raw = yf.download(tickers, period="5y", progress=False)
-        data = ensure_df_close(raw)
-        data = data.pct_change().dropna()
+        data = download_closes(tickers).pct_change(fill_method=None).dropna()
         if data.empty:
             raise ValueError("No closing price data returned for the given tickers.")
         return data
@@ -119,8 +117,7 @@ class HRP :
 
 
     def get_returns(self,tickers):
-        raw = yf.download(tickers, period="5y", progress=False)
-        prices = ensure_df_close(raw)
+        prices = download_closes(tickers)
 
         if prices.empty or prices.shape[0] < 50:
             raise ValueError("Insufficient price data")
@@ -194,47 +191,3 @@ class HRP :
         return pd.Series(np.concatenate(results))
 
 
-'''assets = [
-    "INFY.NS", "TCS.NS", "WIPRO.NS",
-    "HDFCBANK.NS", "HINDUNILVR.NS", "RELIANCE.NS","ASIANPAINT.NS",
-    "DRREDDY.NS","LTIM.NS","MARUTI.NS"
-]
-
-assets=["INFY.NS","jklakshmi.NS","geship.NS","RELIANCE.NS","bel.ns","jyothylab.ns","ptc.ns","sbin.ns","paradeep.ns","sail.ns","ioc.ns","apollotyre.ns","idfcfirstb.ns","ncc.ns","exideind.ns","nhpc.ns","itc.ns","goldbees.ns","hfcl.ns","federalbnk.ns","tatasteel.ns","orienthot.ns"]
-
-hrp = HRP()
-returns = hrp.get_returns(assets)
-
-bt_hrp = hrp.rolling_backtest(returns, hrp.hrp_adapter)
-bt_eq  = hrp.rolling_backtest(returns, lambda r: hrp.equal_weight(r.shape[1]))
-bt_mpt = hrp.rolling_backtest(returns, hrp.mpt_adapter)
-
-summary = pd.DataFrame({
-    "HRP": bt_hrp,
-    "Equal Weight": bt_eq,
-    "MPT": bt_mpt
-}).agg(["mean", "std"])
-
-summary.loc["sharpe"] = summary.loc["mean"] / summary.loc["std"]
-print(summary)
-
-print(f'HRP: ', end='')
-hrp.portfolio_performance(returns, hrp.hrp_adapter(returns))
-print(f'Equal Weight: ', end='')
-hrp.portfolio_performance(returns, hrp.equal_weight(returns.shape[1]))
-print(f'MPT: ', end='')
-hrp.portfolio_performance(returns, hrp.mpt_adapter(returns))
-
-(1 + bt_hrp).cumprod().plot(label="HRP")
-(1 + bt_eq).cumprod().plot(label="Equal")
-(1 + bt_mpt).cumprod().plot(label="MPT")
-plt.legend()
-plt.show() '''
-
-#tickers = ["INFY.NS", "TCS.NS", "WIPRO.NS", "HCLTECH.NS", "AXISBANK.NS"]
-#hrp = HRP()
-#returns = hrp.returns(tickers)
-#hrp_weights, cov, corr = hrp.hrp_weights(returns)
-#print(hrp_weights)
-#print(cov)
-#print(corr) 

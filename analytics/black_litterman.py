@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from hrp import HRP   # your existing HRP class
+from .hrp import HRP
 
 
 # ======================================================
@@ -142,8 +142,7 @@ def run_hrp_bl_pipeline(
     returns_df = hrp.returns(tickers)
 
     # 2. HRP
-    hrp_weights = hrp.hrp_weights(returns_df)
-    hrp_cov = returns_df.cov()
+    hrp_weights, hrp_cov, _ = hrp.hrp_weights(returns_df)  # returns (weights, cov, corr)
 
     # 3. BL
     bl = BlackLittermanHRP(
