@@ -1,6 +1,6 @@
-import WACC as wacc
-import mydcf as mydcf
-import yfinance as yf
+"""Screen a list of tickers by DCF upside.  Run: python -m scripts.dcf_screener"""
+from analytics.market_data import DataError
+from analytics.dcf import DCF_Valuation, DCFError
 
 nifty_500_full = [
     "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "HINDUNILVR.NS",
@@ -47,38 +47,33 @@ us_stocks_dcf = [
     "CRM", "NOW", "SNPS", "CDNS", "PLTR", "CRWD"
 ]
 
-print(f"US Stocks Array: {len(us_stocks_dcf)} ready for DCF screening")
+if __name__ == "__main__":
+    print(f"US Stocks Array: {len(us_stocks_dcf)} ready for DCF screening")
+    print(f"NIFTY Smallcap 250 Array: {len(nifty_smallcap_250)} stocks ready for DCF screening")
 
-print(f"NIFTY Smallcap 250 Array: {len(nifty_smallcap_250)} stocks ready for DCF screening")
+
+def screen(tickers):
+    upside, downside = [], []
+    for ticker in tickers:
+        try:
+            res = DCF_Valuation(ticker).run()
+        except (DCFError, DataError, ValueError) as exc:
+            print(f"{ticker}: skipped ({exc})")
+            continue
+        if res["upside"] is None:
+            continue
+        row = (ticker, res["currency"], res["per_share_value"], res["upside"], res["profile"]["label"])
+        (upside if res["upside"] > 0 else downside).append(row)
+    upside.sort(key=lambda x: x[3], reverse=True)
+    downside.sort(key=lambda x: x[3])
+    return upside, downside
 
 
-portfolio_upside = []
-portfolio_downside = []
-for ticker in us_stocks_dcf[:2]:  # Test first 50
-    try:
-        model = mydcf.DCF_Valuation(ticker)
-        wacc_val = wacc.WACCModel(ticker).wacc()
-        ev, _ = model.project_fcff(wacc_val)
-        if ev:
-            eq, ps = model.equity_value(ev)
-            market_price = yf.Ticker(ticker).info.get('currentPrice', 0)
-            upside = (ps - market_price) / market_price * 100 if market_price > 0 else 0
-            downside = (market_price - ps) / market_price * 100 if market_price > 0 else 0
-            if upside > 0:  # Top buys only
-                portfolio_upside.append((ticker, ps, upside))
-            elif downside > 0:  # Top sells only
-                portfolio_downside.append((ticker, ps, downside))
-    except:
-        continue
-
-# Sort by upside
-portfolio_upside.sort(key=lambda x: x[2], reverse=True)
-print("TOP 10 BUYS:")
-for ticker, target, upside in portfolio_upside[:10]:
-    print(f"{ticker}: ₹{target:.0f} (+{upside:.0f}%)")
-
-# Sort by downside
-portfolio_downside.sort(key=lambda x: x[2], reverse=True)
-print("TOP 10 SELLS:")
-for ticker, target, downside in portfolio_downside[:10]:
-    print(f"{ticker}: ₹{target:.0f} (-{downside:.0f}%)")
+if __name__ == "__main__":
+    buys, sells = screen(us_stocks_dcf[:5])
+    print("TOP 10 BUYS:")
+    for ticker, ccy, target, up, label in buys[:10]:
+        print(f"{ticker:<12} {ccy} {target:,.2f} ({up:+.0%})  [{label}]")
+    print("TOP 10 SELLS:")
+    for ticker, ccy, target, up, label in sells[:10]:
+        print(f"{ticker:<12} {ccy} {target:,.2f} ({up:+.0%})  [{label}]")

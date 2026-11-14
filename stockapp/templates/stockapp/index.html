@@ -1,512 +1,178 @@
-{% load static %}
-<!DOCTYPE html>
-<html lang="en">
+{% extends "stockapp/base.html" %}
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Portfolio Analyzer (Bull vs Bear)</title>
+{% block title %}Portfolio Analyzer{% endblock %}
 
-    <style>
-        /* === GENERAL PAGE STYLING === */
-        body {
-            font-family: 'Poppins', sans-serif;
-            background-color: #000;
-            color: #f5f6fa;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-            overflow-x: hidden;
-        }
+{% block extra_css %}
+<style>
+    .asset-row { display: grid; grid-template-columns: 2fr 1.2fr auto; gap: 10px; align-items: center; margin-bottom: 10px; }
+    .asset-row input[type=text], .asset-row input[type=number] {
+        width: 100%; padding: 10px 12px; font-size: 15px; font-family: inherit; border-radius: 9px;
+        border: 1px solid rgba(0, 255, 204, 0.3); background: rgba(10, 10, 10, 0.92); color: #fff;
+    }
+    .asset-row .remove { color: var(--muted); font-size: 12px; display: flex; gap: 4px; align-items: center; white-space: nowrap; }
+    .row-errors { grid-column: 1 / -1; }
+    .upload { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .saved { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: end; }
+    .saved > * { min-width: 0; }
+    @media (max-width: 600px) {
+        .asset-row { grid-template-columns: 1fr 1fr; }
+        .asset-row .remove { grid-column: 1 / -1; }
+        .saved { grid-template-columns: 1fr; }
+    }
+</style>
+{% endblock %}
 
-        #candlestick-bg,
-        #snowfall-bg {
-            position: fixed;
-            top: 0;
-            left: 0;
-            z-index: -1;
-            width: 100vw;
-            height: 100vh;
-            background-color: #000;
-        }
+{% block content %}
+<h1>Welcome, {{ user.username }}</h1>
+<p class="subtitle">Enter holdings to see return, risk, Sharpe ratio and tail risk over the last 5 years.</p>
 
-        /* === HEADER STYLING === */
-        @keyframes neonPulse {
-            0% {
-                text-shadow: 0 0 6px #00ffcc;
-            }
+{% if message %}<div class="message">{{ message }}</div>{% endif %}
+{% if error %}<div class="error">⚠ {{ error }}</div>{% endif %}
 
-            50% {
-                text-shadow: 0 0 10px #00ccff;
-            }
-
-            100% {
-                text-shadow: 0 0 6px #00ffcc;
-            }
-        }
-
-        header {
-            position: fixed;
-            top: 0;
-            width: 100%;
-            background: rgba(0, 0, 0, 0.88);
-            color: #00ffcc;
-            box-shadow: 0 0 10px rgba(0, 255, 204, 0.15);
-            border-bottom: 1px solid rgba(0, 255, 204, 0.25);
-            z-index: 1000;
-            animation: neonPulse 5s ease-in-out infinite alternate;
-        }
-
-        /* === NAV === */
-        .nav-container {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            max-width: 1100px;
-            margin: auto;
-            padding: 12px 20px;
-        }
-
-        h2 {
-            margin: 0;
-            font-size: 22px;
-            letter-spacing: 1px;
-        }
-
-        .nav-buttons {
-            display: flex;
-            gap: 10px;
-        }
-
-        /* === BUTTONS === */
-        .nav-btn {
-            background: linear-gradient(90deg, #00ffcc, #00ccff);
-            color: #000;
-            font-weight: 600;
-            border: none;
-            border-radius: 8px;
-            padding: 8px 14px;
-            cursor: pointer;
-            box-shadow: 0 0 6px rgba(0, 255, 204, 0.35);
-            transition: all 0.25s ease;
-        }
-
-        .nav-btn:hover {
-            box-shadow: 0 0 8px rgba(0, 255, 204, 0.55);
-            transform: translateY(-1px);
-        }
-
-        .nav-btn.active {
-            background: linear-gradient(90deg, #ff007f, #ff3366);
-            color: #fff;
-            box-shadow: 0 0 6px rgba(255, 51, 102, 0.4);
-        }
-
-        /* === FOOTER === */
-        footer {
-            position: fixed;
-            bottom: 0;
-            width: 100%;
-            background: rgba(0, 0, 0, 0.88);
-            color: #00ffcc;
-            text-align: center;
-            border-top: 1px solid rgba(0, 255, 204, 0.25);
-            padding: 10px 0;
-            box-shadow: 0 0 10px rgba(0, 255, 204, 0.15);
-            z-index: 1000;
-        }
-
-        footer p {
-            margin: 0;
-            font-size: 14px;
-            animation: neonPulse 5s ease-in-out infinite alternate;
-        }
-
-        /* === MAIN CONTENT === */
-        main {
-            width: 100%;
-            max-width: 1000px;
-            padding: 120px 20px 100px;
-            box-sizing: border-box;
-        }
-
-        /* === CONTAINERS === */
-        .container {
-            background: rgba(0, 0, 0, 0.45);
-            padding: 24px;
-            border-radius: 14px;
-            border: 1px solid rgba(0, 255, 204, 0.25);
-            box-shadow: 0 0 14px rgba(0, 255, 204, 0.12);
-            margin-bottom: 20px;
-            transition: all 0.3s ease;
-        }
-
-        .container:hover {
-            box-shadow: 0 0 18px rgba(0, 255, 204, 0.22);
-        }
-
-        /* === TABLE === */
-        table {
-            width: 90%;
-            margin: 25px auto;
-            border-collapse: collapse;
-            border: 1px solid rgba(0, 255, 204, 0.3);
-        }
-
-        th,
-        td {
-            padding: 10px;
-            border: 1px solid #00ffcc;
-            text-align: center;
-        }
-
-        th {
-            background-color: rgba(0, 255, 204, 0.15);
-        }
-
-        /* === FORM ELEMENTS === */
-        input {
-            border: 1px solid rgba(0, 255, 204, 0.3);
-            font-size: 14px;
-            background: rgba(10, 10, 10, 0.9);
-            color: #fff;
-            outline: none;
-            transition: 0.2s ease;
-        }
-
-        input:focus {
-            border-color: #00ffcc;
-            box-shadow: 0 0 6px rgba(0, 255, 204, 0.6);
-        }
-
-        /* === ERROR === */
-        .error {
-            background: rgba(255, 0, 80, 0.25);
-            padding: 10px;
-            border-radius: 6px;
-            border: 1px solid #ff3366;
-            color: #ffcccc;
-            margin-top: 10px;
-            box-shadow: 0 0 8px rgba(255, 51, 102, 0.35);
-        }
-
-        /* === FILE UPLOAD === */
-        .file-upload {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            margin-top: 10px;
-            flex-wrap: wrap;
-        }
-
-        /* === DROPDOWN MENU (HOVER) === */
-        /* === DROPDOWN MENU (HOVER, CLEAN) === */
-        .dropdown {
-            position: relative;
-        }
-
-        .dropdown-toggle {
-            cursor: pointer;
-        }
-
-        .dropdown-menu {
-            position: absolute;
-            top: 42px;
-            right: 0;
-            background: rgba(0, 0, 0, 0.96);
-            border: 1px solid rgba(0, 255, 204, 0.22);
-            border-radius: 10px;
-            min-width: 220px;
-            display: none;
-            flex-direction: column;
-            z-index: 2000;
-            box-shadow: 0 0 6px rgba(0, 255, 204, 0.12);
-            overflow: hidden;
-            /* 🔒 prevents color bleed */
-        }
-
-        .dropdown:hover .dropdown-menu {
-            display: flex;
-        }
-
-        .dropdown-menu a,
-        .dropdown-menu button {
-            background: none;
-            border: none;
-            color: rgba(0, 255, 204, 0.85);
-            padding: 10px 14px;
-            text-align: left;
-            font-size: 14px;
-            cursor: pointer;
-            width: 100%;
-            box-shadow: none;
-            /* ❌ no glow */
-        }
-
-        .dropdown-menu a:hover,
-        .dropdown-menu button:hover {
-            background: rgba(0, 255, 204, 0.08);
-            /* soft highlight */
-        }
-    </style>
-
-</head>
-
-<body>
-    <header id="page-header">
-        <div class="nav-container">
-            <h2><a href="{% url 'home' %}" style="text-decoration: none; color: #00ffcc;">💹 Portfolio Analyzer
-                    Dashboard</a></h2>
-            <nav class="nav-buttons">
-                <div class="dropdown">
-                    <button class="nav-btn dropdown-toggle">☰ Menu</button>
-                    <div class="dropdown-menu">
-                        <a href="{% url 'home' %}">📊 Sharpe Ratio Analyzer</a>
-                        <a href="{% url 'efficient_frontier' %}">🚀 Efficient Frontier</a>
-                        <a href="{% url 'dcf' %}">📊 DCF</a>
-                        {% if user.is_authenticated %}
-                        <form action="{% url 'logout' %}" method="post">
-                            {% csrf_token %}
-                            <button type="submit">🚪 Logout</button>
-                        </form>
-                        {% endif %}
-                    </div>
+<div class="two-col">
+    <section class="panel">
+        <h3>Holdings</h3>
+        <form id="portfolio-form" method="post" enctype="multipart/form-data" data-loading="Fetching prices and analysing the portfolio…">
+            {% csrf_token %}
+            {{ formset.management_form }}
+            <div id="form-container">
+                {% for form in formset %}
+                <div class="asset-row">
+                    {{ form.symbol }}
+                    {{ form.weight }}
+                    <label class="remove">{{ form.DELETE }} remove</label>
+                    {% if form.errors %}<div class="row-errors">{{ form.errors }}</div>{% endif %}
                 </div>
-            </nav>
-        </div>
-    </header>
+                {% endfor %}
+            </div>
+            <p class="hint">Weights are rescaled to 100%, so 0.25 or 25 both work.</p>
+            <div class="row" style="margin-top:12px;">
+                <button type="button" id="add-row" class="btn btn-ghost">➕ Add stock</button>
+                <button type="submit" name="action" value="analyze" class="btn">Analyze portfolio</button>
+            </div>
 
-    <main>
-        <canvas id="candlestick-bg"></canvas>
+            <h3 style="margin-top:24px;">Or upload a file</h3>
+            <p class="hint">CSV or Excel with <code>symbol</code> and <code>weight</code> columns.</p>
+            <div class="upload">
+                <input type="file" name="file" accept=".csv,.xls,.xlsx">
+                <button type="submit" name="action" value="upload_file" class="btn btn-ghost">📂 Load file</button>
+            </div>
+        </form>
+    </section>
 
-        <div class="container">
-            <h1>Welcome, {{ user.username }}</h1>
-
-            <!-- 🔽 PORTFOLIO SELECTOR -->
-            {% if portfolios %}
-            <h3>Select Saved Portfolio</h3>
-            <form method="get">
-                <select name="portfolio_id" onchange="this.form.submit()" style="
-                        width:60%;
-                        padding:10px;
-                        border-radius:10px;
-                        background:rgba(10,10,10,0.9);
-                        color:#00ffcc;
-                        border:1px solid rgba(0,255,204,0.3);
-                        margin-bottom:20px;
-                    ">
+    <section class="panel">
+        <h3>Saved portfolios</h3>
+        {% if portfolios %}
+        <form method="get" class="saved">
+            <div class="field">
+                <label for="portfolio_id">Load a saved portfolio</label>
+                <select name="portfolio_id" id="portfolio_id" onchange="this.form.submit()">
+                    <option value="">— Choose portfolio —</option>
                     {% for p in portfolios %}
-                    <option value="">— Choose Portfolio —</option>
-
-                    {% with is_selected=False %}
-                    {% if selected_portfolio and selected_portfolio.id == p.id %}
-                    {% with is_selected=True %}
-                    {% endwith %}
-                    {% endif %}
-
-                    <option value="{{ p.id }}" {% if is_selected %}selected{% endif %}>
-                        {{ p.name }}
-                    </option>
-                    {% endwith %}
+                    <option value="{{ p.id }}" {% if selected_portfolio and selected_portfolio.id == p.id %}selected{% endif %}>{{ p.name }}</option>
                     {% endfor %}
                 </select>
-            </form>
-            {% endif %}
+            </div>
+            <noscript><button type="submit" class="btn btn-ghost">Load</button></noscript>
+        </form>
+        {% if selected_portfolio %}
+        <form method="post" style="margin-top:10px;" onsubmit="return confirm('Delete {{ selected_portfolio.name|escapejs }}?');">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="delete_portfolio">
+            <input type="hidden" name="portfolio_id" value="{{ selected_portfolio.id }}">
+            <button type="submit" class="btn btn-danger btn-sm">Delete “{{ selected_portfolio.name }}”</button>
+        </form>
+        {% endif %}
+        {% else %}
+        <p class="hint">Analyse a portfolio, then save it here to reload it later.</p>
+        {% endif %}
+    </section>
+</div>
 
-            <h3>Portfolio Input</h3>
+{% if portfolio_return is not None %}
+<div class="kpis">
+    <div class="kpi hero">
+        <div class="label">Annual return</div>
+        <div class="value">{{ portfolio_return }}%</div>
+        <div class="sub">average over 5 years</div>
+    </div>
+    <div class="kpi">
+        <div class="label">Volatility</div>
+        <div class="value">{{ portfolio_volatility }}%</div>
+        <div class="sub">annualised</div>
+    </div>
+    <div class="kpi">
+        <div class="label">Sharpe ratio</div>
+        <div class="value {% if sharpe >= 1 %}up{% elif sharpe < 0 %}down{% endif %}">{{ sharpe }}</div>
+        <div class="sub">return per unit of risk (rf 5%)</div>
+    </div>
+    <div class="kpi">
+        <div class="label">1-day VaR (95%)</div>
+        <div class="value down">{{ var_95 }}%</div>
+        <div class="sub">CVaR {{ cvar_95 }}% · worst day {{ worst_day }}%</div>
+    </div>
+</div>
 
-            <form id="portfolio-form" method="post" enctype="multipart/form-data">
-                {% csrf_token %}
-                {{ formset.management_form }}
-
-                <h3>Upload a CSV or Excel File</h3>
-                <input type="file" name="file" accept=".csv,.xls,.xlsx">
-                <button type="submit" name="action" value="upload_file">📂 Upload File</button>
-
-                <hr style="margin:20px 0;border-color:rgba(0,255,204,0.25);">
-
-                <h3>Manual Entry</h3>
-                <div id="form-container">
-                    {% for form in formset %}
-                    <div class="asset-row">
-                        {{ form.symbol }} {{ form.weight }}
-                    </div>
+<div class="two-col">
+    <section class="panel">
+        <h3>Daily returns distribution</h3>
+        <img src="data:image/png;base64,{{ histogram }}" alt="Histogram of daily portfolio returns">
+    </section>
+    <div>
+        <section class="panel">
+            <h3>Per-stock</h3>
+            <div class="scroll">
+                <table>
+                    <tr><th>Stock</th><th>Weight</th><th>Return</th><th>Volatility</th></tr>
+                    {% for d in details %}
+                    <tr><td>{{ d.symbol }}</td><td>{{ d.weight|floatformat:3 }}</td><td>{{ d.mean }}%</td><td>{{ d.vol }}%</td></tr>
                     {% endfor %}
-                </div>
-
-                <button type="button" id="add-row">➕ Add another asset</button>
-                <button type="submit" name="action" value="analyze">Analyze</button>
-            </form>
-
-            {% if message %}
-            <div class="message">{{ message }}</div>
-            {% endif %}
-            {% if error %}
-            <div class="error">{{ error }}</div>
-            {% endif %}
-        </div>
-
-        {% if portfolio_return %}
-        <div class="container">
-            <h3>Portfolio Analysis Results</h3>
-            <ul>
-                <li>Portfolio Return: {{ portfolio_return }}%</li>
-                <li>Portfolio Volatility: {{ portfolio_volatility }}%</li>
-                <li>Sharpe Ratio: {{ sharpe }}</li>
-                <li>Max Daily Loss: {{ max_daily_loss }}%</li>
-            </ul>
-        </div>
-        {% endif %}
-
-        {% if histogram %}
-        <div class="container">
-            <h4>Portfolio Daily Returns Distribution</h4>
-            <img src="data:image/png;base64,{{ histogram }}" alt="Portfolio Histogram">
-        </div>
-        {% endif %}
-
-        {% if portfolio_return %}
-        <div style="text-align:center;margin-top:20px;">
-            <form action="{% url 'efficient_frontier' %}" method="post">
+                </table>
+            </div>
+        </section>
+        <section class="panel">
+            <h3>Next steps</h3>
+            <form action="{% url 'efficient_frontier' %}" method="post" data-loading="Simulating portfolios…">
                 {% csrf_token %}
                 <input type="hidden" name="symbols" value="{{ symbols }}">
                 <input type="hidden" name="weights" value="{{ weights }}">
-                <button type="submit" class="nav-btn">Optimizer 🚀</button>
+                <button type="submit" class="btn">🚀 Optimise on the efficient frontier</button>
             </form>
-        </div>
-        {% endif %}
-
-        {% if portfolio_return %}
-        <div class="container" style="text-align:center;">
-            <h3>Save Portfolio</h3>
-
-            <form method="post">
+            <form method="post" class="row" style="margin-top:14px;">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="save_portfolio">
                 <input type="hidden" name="symbols" value="{{ symbols }}">
                 <input type="hidden" name="weights" value="{{ weights }}">
-
-                <input type="text" name="portfolio_name" placeholder="Enter portfolio name" required
-                    style="padding:10px;border-radius:8px;">
-
-                <button type="submit" class="nav-btn" style="margin-left:10px;">
-                    💾 Save Portfolio
-                </button>
+                <input type="text" name="portfolio_name" class="input" placeholder="Portfolio name" required maxlength="100" style="flex:1;min-width:160px;">
+                <button type="submit" class="btn btn-ghost">💾 Save</button>
             </form>
-        </div>
-        {% endif %}
+        </section>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
 
-    </main>
-
-    <footer id="page-footer">
-        <p>© 2025 StockVision | Tracking Bulls, Bears & Beyond</p>
-    </footer>
-
-    <!-- === SNOWFALL BACKGROUND === -->
-    <canvas id="snowfall-bg"></canvas>
-    <script>
-        document.addEventListener("DOMContentLoaded", function () {
-            const canvas = document.getElementById("snowfall-bg");
-            const ctx = canvas.getContext("2d");
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-
-            // 🔹 Use actual Sharpe ratio from context
-            const sharpeRatio = parseFloat("{{ sharpe|default:0 }}");
-            let snowColor = "rgba(255,255,255,0.9)";
-            let glowColor = "#FFFFFF";
-
-            if (!isNaN(sharpeRatio)) {
-                if (sharpeRatio >= 1) {
-                    snowColor = "rgba(0,255,153,0.85)";
-                    glowColor = "#00FF99";
-                } else if (sharpeRatio < 1) {
-                    snowColor = "rgba(255,51,102,0.85)";
-                    glowColor = "#FF3366";
-                }
-            }
-
-            const flakes = [];
-            const num = 100;
-            for (let i = 0; i < num; i++) {
-                flakes.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, r: Math.random() * 2 + 0.5, d: Math.random() + 0.5 });
-            }
-
-            function draw() {
-                ctx.fillStyle = "rgba(0,0,0,1)";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = snowColor;
-                ctx.shadowBlur = 10;
-                ctx.shadowColor = glowColor;
-
-                flakes.forEach(f => {
-                    ctx.beginPath();
-                    ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
-                    ctx.fill();
-                });
-                move();
-                requestAnimationFrame(draw);
-            }
-
-            let angle = 0;
-            function move() {
-                angle += 0.01;
-                flakes.forEach(f => {
-                    f.y += Math.pow(f.d, 2) + 0.5;
-                    f.x += Math.sin(angle) * 0.5;
-                    if (f.y > canvas.height) { f.y = -5; f.x = Math.random() * canvas.width; }
-                });
-            }
-            draw();
-        });
-
-        document.addEventListener("DOMContentLoaded", function () {
-            const toggle = document.querySelector(".dropdown-toggle");
-            const menu = document.querySelector(".dropdown-menu");
-
-            toggle.addEventListener("click", function (e) {
-                e.stopPropagation();
-                menu.style.display = menu.style.display === "flex" ? "none" : "flex";
+{% block extra_js %}
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const addBtn = document.getElementById("add-row");
+        const container = document.getElementById("form-container");
+        const total = document.getElementById("id_form-TOTAL_FORMS");
+        if (!addBtn || !container || !total) return;
+        addBtn.addEventListener("click", function () {
+            const n = parseInt(total.value, 10);
+            const first = container.querySelector(".asset-row");
+            if (!first) return;
+            const row = first.cloneNode(true);
+            row.querySelectorAll(".row-errors").forEach(e => e.remove());
+            row.querySelectorAll("input").forEach(input => {
+                if (input.type === "checkbox") input.checked = false; else input.value = "";
+                input.name = input.name.replace(/-\d+-/, `-${n}-`);
+                input.id = input.id.replace(/-\d+-/, `-${n}-`);
             });
-
-            document.addEventListener("click", function () {
-                menu.style.display = "none";
-            });
+            container.appendChild(row);
+            total.value = n + 1;
         });
-
-        document.addEventListener("DOMContentLoaded", function () {
-
-            const addBtn = document.getElementById("add-row");
-            const formContainer = document.getElementById("form-container");
-            const totalForms = document.querySelector("#id_form-TOTAL_FORMS");
-
-            if (!addBtn || !formContainer || !totalForms) return;
-
-            addBtn.addEventListener("click", function () {
-                const formCount = parseInt(totalForms.value);
-                const firstRow = formContainer.querySelector(".asset-row");
-
-                if (!firstRow) return;
-
-                // Clone first form row
-                const newRow = firstRow.cloneNode(true);
-
-                // Update input names and ids
-                newRow.querySelectorAll("input").forEach(input => {
-                    input.value = "";
-                    input.name = input.name.replace(/-\d+-/, `-${formCount}-`);
-                    input.id = input.id.replace(/-\d+-/, `-${formCount}-`);
-                });
-
-                formContainer.appendChild(newRow);
-                totalForms.value = formCount + 1;
-            });
-        });
-
-    </script>
-</body>
-
-</html>
+    });
+</script>
+{% endblock %}

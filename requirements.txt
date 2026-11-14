@@ -1,12 +1,15 @@
-Django>=5.2
-gunicorn
-mysqlclient
-pandas
-numpy
-yfinance
-openpyxl
-python-dotenv
-whitenoise
-matplotlib
-seaborn
-scipy
+# Web
+Django>=5.2,<5.3          # 5.2 LTS (supported to April 2028); Django 6 needs Python 3.12+
+gunicorn>=23.0
+whitenoise>=6.6
+python-dotenv>=1.0
+dj-database-url>=2.1      # reads DATABASE_URL (Neon Postgres in production)
+psycopg[binary]>=3.1      # Postgres driver, prebuilt wheels - no compiler needed
+
+# Analytics
+pandas>=2.2
+numpy>=1.26
+yfinance>=0.2.54
+matplotlib>=3.8
+openpyxl>=3.1             # Excel uploads
+scipy>=1.11               # HRP research module

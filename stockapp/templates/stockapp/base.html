@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Portfolio Analyzer{% endblock %} · StockVision</title>
+    <style>
+        :root {
+            --accent: #00ffcc;
+            --accent-2: #00ccff;
+            --accent-dim: rgba(0, 255, 204, 0.25);
+            --panel: rgba(8, 12, 14, 0.78);
+            --border: rgba(0, 255, 204, 0.22);
+            --text: #f5f6fa;
+            --muted: #9aa4ad;
+            --up: #00e68a;
+            --down: #ff5c7a;
+            --warn: #ffcc4d;
+        }
+
+        * { box-sizing: border-box; }
+        body { font-family: 'Poppins', 'Segoe UI', system-ui, sans-serif; background: #000; color: var(--text); margin: 0; }
+        a { color: var(--accent); }
+        code { color: var(--accent); }
+        img { max-width: 100%; height: auto; border-radius: 10px; }
+
+        /* ---------- header / nav ---------- */
+        header {
+            position: fixed; top: 0; width: 100%; z-index: 1000;
+            background: rgba(0, 0, 0, 0.88); border-bottom: 1px solid var(--border);
+            box-shadow: 0 0 10px rgba(0, 255, 204, 0.15);
+        }
+        .nav-container { display: flex; justify-content: space-between; align-items: center; max-width: 1180px; margin: auto; padding: 12px 20px; gap: 12px; }
+        .brand { margin: 0; font-size: 19px; letter-spacing: 1px; white-space: nowrap; }
+        .brand a { color: var(--accent); text-decoration: none; }
+        .nav-links { display: flex; align-items: center; gap: 6px; }
+        .nav-links a, .nav-links button {
+            color: rgba(0, 255, 204, 0.85); text-decoration: none; font-size: 14px; padding: 8px 12px;
+            border-radius: 8px; background: none; border: 1px solid transparent; cursor: pointer; font-family: inherit;
+        }
+        .nav-links a:hover, .nav-links button:hover { background: rgba(0, 255, 204, 0.08); }
+        .nav-links a.active { border-color: var(--border); background: rgba(0, 255, 204, 0.1); color: #fff; }
+        .nav-links form { margin: 0; }
+        .nav-toggle {
+            display: none; background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #000;
+            font-weight: 600; border: none; border-radius: 8px; padding: 8px 14px; cursor: pointer;
+        }
+
+        footer {
+            position: fixed; bottom: 0; width: 100%; z-index: 999; text-align: center;
+            background: rgba(0, 0, 0, 0.88); color: var(--accent); border-top: 1px solid var(--border);
+            padding: 9px 0; font-size: 13px;
+        }
+        footer p { margin: 0; }
+        #bg-canvas { position: fixed; inset: 0; z-index: -1; width: 100vw; height: 100vh; background: #000; }
+
+        /* ---------- layout ---------- */
+        main { max-width: 1180px; margin: 0 auto; padding: 96px 20px 90px; }
+        h1 { color: var(--accent); margin: 0 0 4px; font-size: 30px; }
+        h3 { color: var(--accent); margin: 0 0 14px; font-size: 17px; }
+        .subtitle { color: var(--muted); margin: 0 0 22px; }
+        .hint { color: var(--muted); font-size: 12px; font-weight: 400; }
+        .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-bottom: 18px; backdrop-filter: blur(3px); }
+        .two-col { display: grid; grid-template-columns: 1.25fr 1fr; gap: 18px; align-items: start; }
+        .two-col > *, .kpis > * { min-width: 0; }
+        .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+        /* ---------- forms ---------- */
+        .field label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+        .field input, .field select, input.input, select.input {
+            width: 100%; padding: 11px 12px; font-size: 15px; font-family: inherit; border-radius: 9px;
+            border: 1px solid rgba(0, 255, 204, 0.3); background: rgba(10, 10, 10, 0.92); color: #fff;
+        }
+        input:focus, select:focus { outline: 2px solid var(--accent-dim); border-color: var(--accent); }
+        input[type=file] { color: var(--muted); max-width: 100%; }
+        .btn {
+            padding: 11px 20px; border: none; border-radius: 9px; cursor: pointer; font-size: 15px; font-weight: 600;
+            font-family: inherit; white-space: nowrap; text-decoration: none; display: inline-block;
+            background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #000;
+        }
+        .btn:hover { opacity: 0.9; }
+        .btn[disabled] { opacity: 0.55; cursor: wait; }
+        .btn-ghost { background: transparent; color: var(--accent); border: 1px solid var(--border); }
+        .btn-danger { background: transparent; color: var(--down); border: 1px solid rgba(255, 92, 122, 0.4); }
+        .btn-sm { padding: 7px 12px; font-size: 13px; }
+
+        /* ---------- alerts ---------- */
+        .error { border: 1px solid rgba(255, 92, 122, 0.5); background: rgba(255, 92, 122, 0.1); color: #ffb3c0; padding: 12px 14px; border-radius: 10px; margin-bottom: 18px; }
+        .message { border: 1px solid rgba(0, 230, 138, 0.4); background: rgba(0, 230, 138, 0.08); color: #b9ffe3; padding: 12px 14px; border-radius: 10px; margin-bottom: 18px; }
+        .warning { border-left: 3px solid var(--warn); background: rgba(255, 204, 77, 0.08); color: #ffe08a; padding: 8px 12px; border-radius: 6px; font-size: 13px; margin-top: 8px; }
+        .errorlist { color: #ffb3c0; list-style: none; padding: 0; margin: 4px 0; font-size: 13px; }
+
+        /* ---------- KPI cards ---------- */
+        .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+        .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
+        .kpi .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+        .kpi .value { font-size: 24px; font-weight: 700; margin-top: 6px; font-variant-numeric: tabular-nums; }
+        .kpi .sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+        .kpi.hero .value { color: var(--accent); font-size: 28px; }
+        .up { color: var(--up); }
+        .down { color: var(--down); }
+
+        /* ---------- tables ---------- */
+        table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+        th, td { padding: 8px 10px; border-bottom: 1px solid rgba(0, 255, 204, 0.12); white-space: nowrap; }
+        th { color: var(--accent); font-weight: 600; text-align: right; background: rgba(0, 255, 204, 0.06); }
+        td { text-align: right; }
+        th:first-child, td:first-child { text-align: left; }
+        table.kv th { background: none; color: var(--muted); font-weight: 400; text-align: left; }
+        table.kv td { white-space: normal; }
+        table.kv tr.total th, table.kv tr.total td { color: #fff; font-weight: 700; border-top: 1px solid var(--border); }
+        .scroll { overflow-x: auto; }
+
+        details.panel > summary { cursor: pointer; list-style: none; color: var(--accent); font-weight: 600; font-size: 16px; display: flex; justify-content: space-between; align-items: center; }
+        details.panel > summary::-webkit-details-marker { display: none; }
+        details.panel > summary::after { content: "+"; font-size: 20px; color: var(--muted); }
+        details.panel[open] > summary::after { content: "\2212"; }
+        details.panel[open] > summary { margin-bottom: 14px; }
+
+        /* ---------- loading overlay ---------- */
+        #loading { position: fixed; inset: 0; z-index: 3000; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 14px; background: rgba(0, 0, 0, 0.72); color: var(--accent); text-align: center; padding: 20px; }
+        #loading.show { display: flex; }
+        .spinner { width: 46px; height: 46px; border-radius: 50%; border: 4px solid rgba(0, 255, 204, 0.2); border-top-color: var(--accent); animation: spin 0.9s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .empty { text-align: center; color: var(--muted); padding: 30px 16px; }
+        .empty strong { color: var(--text); }
+
+        @media (max-width: 900px) {
+            .kpis { grid-template-columns: repeat(2, 1fr); }
+            .two-col { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 760px) {
+            .nav-toggle { display: block; }
+            .nav-links { display: none; position: absolute; top: 56px; right: 12px; flex-direction: column; align-items: stretch; min-width: 220px; background: rgba(0, 0, 0, 0.96); border: 1px solid var(--border); border-radius: 10px; padding: 6px; }
+            .nav-links.open { display: flex; }
+        }
+        @media (max-width: 600px) {
+            main { padding: 84px 16px 80px; }
+            .kpis { grid-template-columns: 1fr; }
+            .kpi .value { font-size: 20px; }
+            .kpi.hero .value { font-size: 22px; }
+            .brand { font-size: 15px; }
+            h1 { font-size: 25px; }
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+
+<body>
+    {% with page=request.resolver_match.url_name %}
+    <header>
+        <div class="nav-container">
+            <h2 class="brand"><a href="{% url 'home' %}">💹 Portfolio Analyzer</a></h2>
+            {% if user.is_authenticated %}
+            <button class="nav-toggle" type="button" aria-label="Menu">☰ Menu</button>
+            <nav class="nav-links">
+                <a href="{% url 'home' %}" class="{% if page == 'home' %}active{% endif %}">📊 Portfolio</a>
+                <a href="{% url 'efficient_frontier' %}" class="{% if page == 'efficient_frontier' %}active{% endif %}">🚀 Efficient Frontier</a>
+                <a href="{% url 'dcf' %}" class="{% if page == 'dcf' %}active{% endif %}">💰 DCF Valuation</a>
+                <form action="{% url 'logout' %}" method="post">
+                    {% csrf_token %}
+                    <button type="submit">🚪 Logout</button>
+                </form>
+            </nav>
+            {% endif %}
+        </div>
+    </header>
+    {% endwith %}
+
+    <main>
+        {% for m in messages %}
+        <div class="message">{{ m }}</div>
+        {% endfor %}
+        {% block content %}{% endblock %}
+    </main>
+
+    <div id="loading" role="status" aria-live="polite">
+        <div class="spinner"></div>
+        <div id="loading-text">Working…</div>
+        <div class="hint">Fetching market data can take 10–20 seconds.</div>
+    </div>
+
+    <footer>
+        <p>© 2025 StockVision | Tracking Bulls, Bears & Beyond</p>
+    </footer>
+
+    <canvas id="bg-canvas"></canvas>
+    <script>
+        // Background particles
+        document.addEventListener("DOMContentLoaded", function () {
+            const canvas = document.getElementById("bg-canvas");
+            const ctx = canvas.getContext("2d");
+            function size() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+            size();
+            window.addEventListener("resize", size);
+            const flakes = Array.from({ length: 70 }, () => ({
+                x: Math.random() * canvas.width, y: Math.random() * canvas.height,
+                r: Math.random() * 2 + 0.5, d: Math.random() + 0.5
+            }));
+            let angle = 0;
+            (function draw() {
+                ctx.fillStyle = "#000";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = "rgba(0,255,204,0.5)";
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = "#00ffcc";
+                angle += 0.01;
+                flakes.forEach(f => {
+                    ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2); ctx.fill();
+                    f.y += Math.pow(f.d, 2) + 0.4; f.x += Math.sin(angle) * 0.5;
+                    if (f.y > canvas.height) { f.y = -5; f.x = Math.random() * canvas.width; }
+                });
+                requestAnimationFrame(draw);
+            })();
+        });
+
+        // Mobile menu
+        document.addEventListener("DOMContentLoaded", function () {
+            const toggle = document.querySelector(".nav-toggle");
+            const links = document.querySelector(".nav-links");
+            if (!toggle || !links) return;
+            toggle.addEventListener("click", e => { e.stopPropagation(); links.classList.toggle("open"); });
+            document.addEventListener("click", () => links.classList.remove("open"));
+        });
+
+        // Loading overlay for any <form data-loading="message">
+        document.addEventListener("DOMContentLoaded", function () {
+            const overlay = document.getElementById("loading");
+            document.querySelectorAll("form[data-loading]").forEach(form => {
+                form.addEventListener("submit", () => {
+                    document.getElementById("loading-text").textContent = form.dataset.loading || "Working…";
+                    overlay.classList.add("show");
+                    setTimeout(() => document.querySelectorAll('button[type="submit"]').forEach(b => b.disabled = true), 0);
+                });
+            });
+            window.addEventListener("pageshow", () => {
+                overlay.classList.remove("show");
+                document.querySelectorAll('button[type="submit"]').forEach(b => b.disabled = false);
+            });
+        });
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+
+</html>

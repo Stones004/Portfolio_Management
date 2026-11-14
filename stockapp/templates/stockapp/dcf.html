@@ -1,515 +1,269 @@
-{% load static %}
-<!DOCTYPE html>
-<html lang="en">
+{% extends "stockapp/base.html" %}
 
-<head>
-    <meta charset="UTF-8">
-    <title>Discounted Cash Flow Screener</title>
+{% block title %}DCF Valuation{% endblock %}
 
-    <style>
-        body {
-            font-family: 'Poppins', sans-serif;
-            background: #000;
-            color: #f5f6fa;
-            margin: 0;
-            padding: 0;
-        }
+{% block extra_css %}
+<style>
+    .search { display: grid; grid-template-columns: 2fr 2fr auto; gap: 14px; align-items: end; }
+    .search > * { min-width: 0; }
+    .company { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; align-items: center; }
+    .company h2 { margin: 0; font-size: 22px; color: #fff; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .chip { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+    .chip.model { color: #000; background: var(--accent); border-color: var(--accent); font-weight: 600; }
+    .verdict { font-size: 14px; font-weight: 700; padding: 8px 14px; border-radius: 10px; }
+    .verdict.up { color: var(--up); background: rgba(0, 230, 138, 0.1); border: 1px solid rgba(0, 230, 138, 0.4); }
+    .verdict.down { color: var(--down); background: rgba(255, 92, 122, 0.1); border: 1px solid rgba(255, 92, 122, 0.4); }
+    .verdict.fair { color: var(--warn); background: rgba(255, 204, 77, 0.1); border: 1px solid rgba(255, 204, 77, 0.4); }
+    .note { color: var(--muted); font-size: 13px; margin: 12px 0 0; }
+    .split { display: flex; height: 12px; border-radius: 6px; overflow: hidden; margin: 10px 0 8px; background: #111; }
+    .split .a { background: var(--accent-2); }
+    .split .b { background: var(--accent); opacity: .55; }
+    .legend { display: flex; gap: 16px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+    .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
+    .assumptions { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+    .assumptions .field label { color: #cfe; font-size: 13px; }
+    .assumptions .default { display: flex; justify-content: space-between; margin-top: 4px; }
+    .reset-one { background: none; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 0; font-family: inherit; }
+    .reset-one:hover { text-decoration: underline; }
+    .field input.changed { border-color: var(--warn); }
+    .actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+    .growth-box { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+    .growth-box h4 { margin: 0 0 8px; font-size: 14px; color: #cfe; }
+    @media (max-width: 600px) {
+        .search { grid-template-columns: 1fr; }
+        .assumptions { grid-template-columns: 1fr; }
+    }
+</style>
+{% endblock %}
 
-        main {
-            max-width: 900px;
-            margin: 120px auto 100px;
-            padding: 30px;
-            background: rgba(0, 0, 0, 0.45);
-            border-radius: 14px;
-            border: 1px solid rgba(0, 255, 204, 0.25);
-        }
+{% block content %}
+<h1>DCF Valuation</h1>
+<p class="subtitle">Intrinsic value per share from an industry-specific, Damodaran-style model.</p>
 
-        h1,
-        h2,
-        h3 {
-            color: #00ffcc;
-        }
-
-        label {
-            display: block;
-            margin-top: 15px;
-            font-weight: 600;
-            color: #00ffcc;
-        }
-
-        input {
-            width: 60%;
-            padding: 10px;
-            border-radius: 8px;
-            border: 1px solid rgba(0, 255, 204, 0.3);
-            background: rgba(10, 10, 10, 0.9);
-            color: #fff;
-            font-size: 15px;
-            margin-top: 6px;
-        }
-
-        button {
-            margin-top: 25px;
-            padding: 12px 22px;
-            background: linear-gradient(90deg, #00ffcc, #00ccff);
-            border: none;
-            border-radius: 10px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-
-        button:hover {
-            opacity: 0.9;
-        }
-
-        .metric {
-            font-size: 18px;
-            margin-top: 10px;
-        }
-
-        hr {
-            margin: 40px 0;
-            border: none;
-            border-top: 1px solid rgba(0, 255, 204, 0.25);
-        }
-
-        table {
-            width: 100%;
-            margin-top: 25px;
-            border-collapse: collapse;
-        }
-
-        th,
-        td {
-            border: 1px solid rgba(0, 255, 204, 0.3);
-            padding: 8px;
-            text-align: right;
-        }
-
-        th {
-            background: rgba(0, 255, 204, 0.15);
-            color: #00ffcc;
-        }
-
-        .error {
-            margin-top: 20px;
-            color: #ff6b6b;
-            font-weight: 600;
-        }
-
-        /* === NAV === */
-        .nav-container {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            max-width: 1100px;
-            margin: auto;
-            padding: 12px 20px;
-        }
-
-        h2 {
-            margin: 0;
-            font-size: 22px;
-            letter-spacing: 1px;
-        }
-
-        .nav-buttons {
-            display: flex;
-            gap: 10px;
-        }
-
-        header {
-            position: fixed;
-            top: 0;
-            width: 100%;
-            background: rgba(0, 0, 0, 0.88);
-            color: #00ffcc;
-            box-shadow: 0 0 10px rgba(0, 255, 204, 0.15);
-            border-bottom: 1px solid rgba(0, 255, 204, 0.25);
-            z-index: 1000;
-            animation: neonPulse 5s ease-in-out infinite alternate;
-        }
-
-        /* === HEADER STYLING === */
-        @keyframes neonPulse {
-            0% {
-                text-shadow: 0 0 6px #00ffcc;
-            }
-
-            50% {
-                text-shadow: 0 0 10px #00ccff;
-            }
-
-            100% {
-                text-shadow: 0 0 6px #00ffcc;
-            }
-        }
-
-
-        /* === BUTTONS === */
-        .nav-btn {
-            background: linear-gradient(90deg, #00ffcc, #00ccff);
-            color: #000;
-            font-weight: 600;
-            border: none;
-            border-radius: 8px;
-            padding: 8px 14px;
-            cursor: pointer;
-            box-shadow: 0 0 6px rgba(0, 255, 204, 0.35);
-            transition: all 0.25s ease;
-        }
-
-        .nav-btn:hover {
-            box-shadow: 0 0 8px rgba(0, 255, 204, 0.55);
-            transform: translateY(-1px);
-        }
-
-        .nav-btn.active {
-            background: linear-gradient(90deg, #ff007f, #ff3366);
-            color: #fff;
-            box-shadow: 0 0 6px rgba(255, 51, 102, 0.4);
-        }
-
-
-        /* === FOOTER === */
-        footer {
-            position: fixed;
-            bottom: 0;
-            width: 100%;
-            background: rgba(0, 0, 0, 0.88);
-            color: #00ffcc;
-            text-align: center;
-            border-top: 1px solid rgba(0, 255, 204, 0.25);
-            padding: 10px 0;
-            box-shadow: 0 0 10px rgba(0, 255, 204, 0.15);
-            z-index: 1000;
-        }
-
-        footer p {
-            margin: 0;
-            font-size: 14px;
-            animation: neonPulse 5s ease-in-out infinite alternate;
-        }
-
-
-        /* === CONTAINERS === */
-        .container {
-            background: rgba(0, 0, 0, 0.45);
-            padding: 24px;
-            border-radius: 14px;
-            border: 1px solid rgba(0, 255, 204, 0.25);
-            box-shadow: 0 0 14px rgba(0, 255, 204, 0.12);
-            margin-bottom: 20px;
-            transition: all 0.3s ease;
-        }
-
-        .container:hover {
-            box-shadow: 0 0 18px rgba(0, 255, 204, 0.22);
-        }
-
-
-        /* === DROPDOWN MENU (HOVER) === */
-        /* === DROPDOWN MENU (HOVER, CLEAN) === */
-        .dropdown {
-            position: relative;
-        }
-
-        .dropdown-toggle {
-            cursor: pointer;
-        }
-
-        .dropdown-menu {
-            position: absolute;
-            top: 42px;
-            right: 0;
-            background: rgba(0, 0, 0, 0.96);
-            border: 1px solid rgba(0, 255, 204, 0.22);
-            border-radius: 10px;
-            min-width: 220px;
-            display: none;
-            flex-direction: column;
-            z-index: 2000;
-            box-shadow: 0 0 6px rgba(0, 255, 204, 0.12);
-            overflow: hidden;
-            /* 🔒 prevents color bleed */
-        }
-
-        .dropdown:hover .dropdown-menu {
-            display: flex;
-        }
-
-        .dropdown-menu a,
-        .dropdown-menu button {
-            background: none;
-            border: none;
-            color: rgba(0, 255, 204, 0.85);
-            padding: 10px 14px;
-            text-align: left;
-            font-size: 14px;
-            cursor: pointer;
-            width: 100%;
-            box-shadow: none;
-            /* ❌ no glow */
-        }
-
-        .dropdown-menu a:hover,
-        .dropdown-menu button:hover {
-            background: rgba(0, 255, 204, 0.08);
-            /* soft highlight */
-        }
-
-
-        #candlestick-bg,
-        #snowfall-bg {
-            position: fixed;
-            top: 0;
-            left: 0;
-            z-index: -1;
-            width: 100vw;
-            height: 100vh;
-            background-color: #000;
-        }
-    </style>
-</head>
-
-<body>
-
-    <header id="page-header">
-        <div class="nav-container">
-            <h2><a href="{% url 'home' %}" style="text-decoration: none; color: #00ffcc;">💹 Portfolio Analyzer
-                    Dashboard</a></h2>
-            <nav class="nav-buttons">
-                <div class="dropdown">
-                    <button class="nav-btn dropdown-toggle">☰ Menu</button>
-                    <div class="dropdown-menu">
-                        <a href="{% url 'home' %}">📊 Sharpe Ratio Analyzer</a>
-                        <a href="{% url 'efficient_frontier' %}">🚀 Efficient Frontier</a>
-                        <a href="{% url 'dcf' %}">📊 DCF</a>{% if user.is_authenticated %}
-                        <form action="{% url 'logout' %}" method="post">
-                            {% csrf_token %}
-                            <button type="submit">🚪 Logout</button>
-                        </form>
-                        {% endif %}
-                    </div>
-                </div>
-            </nav>
+<form method="post" id="dcf-form" class="panel" data-loading="Fetching financials and running the valuation…">
+    {% csrf_token %}
+    <div class="search">
+        <div class="field">
+            <label for="ticker">Stock ticker</label>
+            <input type="text" id="ticker" name="ticker" placeholder="INFY.NS, HDFCBANK.NS, AAPL"
+                value="{{ ticker }}" required autocomplete="off">
         </div>
-    </header>
-
-    <main>
-        <h1>Discounted Cash Flow Screener</h1>
-
-        <!-- ================= FORM ================= -->
-        <form method="post">
-            {% csrf_token %}
-
-            <!-- Ticker: always visible -->
-            <label>Stock Ticker</label>
-            <input type="text" name="ticker" placeholder="AAPL, MSFT, INFY.NS" value="{{ ticker }}" required>
-
-            <!-- Assumptions: visible ONLY after first run -->
-            {% if show_inputs %}
-
-            <label>
-                WACC (%)
-                <span style="color:#aaa;font-size:13px;">
-                    (Original: {{ original_params.wacc }}%)
-                </span>
+        <div class="field">
+            <label for="industry">
+                Industry model
+                {% if detected_industry %}<span class="hint">· auto-detected: {{ detected_industry }}</span>{% endif %}
             </label>
-            <input type="number" step="0.1" name="wacc" value="{{ input_params.wacc }}">
+            <select id="industry" name="industry">
+                <option value="">Auto-detect</option>
+                {% for key, label in industry_choices %}
+                <option value="{{ key }}" {% if key == industry %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn">{% if show_inputs %}Re-run DCF{% else %}Run DCF{% endif %}</button>
+    </div>
+    {% if show_inputs %}
+    <p class="hint" style="margin:10px 0 0;">Changing the ticker or industry model starts a fresh valuation with model defaults.</p>
+    {% endif %}
+</form>
 
-            <label>
-                Growth Rate (%)
-                <span style="color:#aaa;font-size:13px;">
-                    (Original: {{ original_params.growth_rate }}%)
-                </span>
-            </label>
-            <input type="number" step="0.1" name="growth_rate" value="{{ input_params.growth_rate }}">
+{% if error %}
+<div class="error">⚠ {{ error }}</div>
+{% endif %}
 
-            <label>
-                Reinvestment Rate (%)
-                <span style="color:#aaa;font-size:13px;">
-                    (Original: {{ original_params.reinvestment_rate }}%)
-                </span>
-            </label>
-            <input type="number" step="1" name="reinvestment_rate" value="{{ input_params.reinvestment_rate }}">
+{% if not result and not error %}
+<div class="panel empty">
+    <p><strong>Enter a ticker to value a company.</strong></p>
+    <p>Indian stocks need <code>.NS</code> (NSE) or <code>.BO</code> (BSE). Banks, insurers and NBFCs
+        are valued with an equity (FCFE) model; everything else with an FCFF model at WACC.</p>
+    <p class="hint">The first run fetches several years of financials and can take 10–20 seconds.</p>
+</div>
+{% endif %}
 
-            <label>
-                Terminal Growth (%)
-                <span style="color:#aaa;font-size:13px;">
-                    (Original: {{ original_params.terminal_growth }}%)
-                </span>
-            </label>
-            <input type="number" step="0.1" name="terminal_growth" value="{{ input_params.terminal_growth }}">
-
-            <label>Forecast Years</label>
-            <input type="number" name="years" value="{{ input_params.years }}">
-
-            {% endif %}
-
-            <button type="submit">
-                {% if show_inputs %}
-                Re-run DCF
-                {% else %}
-                Run DCF
-                {% endif %}
-            </button>
-        </form>
-
-        <!-- ================= ERROR ================= -->
-        {% if error %}
-        <div class="error">{{ error }}</div>
+{% if result %}
+<section class="panel">
+    <div class="company">
+        <div>
+            <h2>{{ result.name }} <span class="hint">({{ ticker }})</span></h2>
+            <div class="chips">
+                <span class="chip model">{{ result.model|upper }}</span>
+                <span class="chip">{{ result.profile_label }}</span>
+                {% if result.sector %}<span class="chip">{{ result.sector }}</span>{% endif %}
+                {% if result.industry %}<span class="chip">{{ result.industry }}</span>{% endif %}
+            </div>
+        </div>
+        {% if result.upside %}
+        <div class="verdict {{ result.verdict_class }}">{{ result.verdict }} · {{ result.upside }}</div>
         {% endif %}
+    </div>
+    <p class="note">{{ result.profile_note }}</p>
+    {% for w in result.warnings %}
+    <div class="warning">⚠ {{ w }}</div>
+    {% endfor %}
+</section>
 
-        <!-- ================= RESULTS ================= -->
-        {% if result %}
-        <hr>
+<div class="kpis">
+    <div class="kpi hero">
+        <div class="label">Intrinsic value / share</div>
+        <div class="value">{{ result.currency }} {{ result.per_share_value }}</div>
+        <div class="sub">from the assumptions below</div>
+    </div>
+    <div class="kpi">
+        <div class="label">Market price</div>
+        <div class="value">{{ result.currency }} {{ result.current_price }}</div>
+        {% if result.upside %}
+        <div class="sub {% if result.upside_positive %}up{% else %}down{% endif %}">{{ result.upside_text }}</div>
+        {% endif %}
+    </div>
+    <div class="kpi">
+        <div class="label">Equity value</div>
+        <div class="value">{{ result.currency }} {{ result.equity_value }}</div>
+        <div class="sub">{% if result.enterprise_value %}Enterprise value {{ result.currency }} {{ result.enterprise_value }}{% else %}Banks: valued directly as equity{% endif %}</div>
+    </div>
+    <div class="kpi">
+        <div class="label">Value from terminal</div>
+        <div class="value">{{ result.terminal_share }}</div>
+        <div class="split" aria-hidden="true">
+            <div class="a" style="width: {{ result.forecast_pct }}%"></div>
+            <div class="b" style="width: {{ result.terminal_pct }}%"></div>
+        </div>
+        <div class="legend">
+            <span><span class="dot" style="background:var(--accent-2)"></span>Forecast years</span>
+            <span><span class="dot" style="background:var(--accent);opacity:.55"></span>Terminal</span>
+        </div>
+    </div>
+</div>
+{% endif %}
 
-        <h2>Valuation Results</h2>
-
-        <div class="metric">
-            <strong>Enterprise Value:</strong>
-            ₹{{ result.enterprise_value|floatformat:0 }}
+{% if show_inputs %}
+<div class="two-col">
+    <!-- Assumption inputs belong to #dcf-form via the HTML form attribute -->
+    <section class="panel">
+        <h3>Assumptions</h3>
+        <div class="assumptions">
+            {% for key, label, original, value, is_int in fields %}
+            <div class="field">
+                <label for="f-{{ key }}">{{ label }}</label>
+                <input type="number" id="f-{{ key }}" name="{{ key }}" form="dcf-form"
+                    step="{% if is_int %}1{% else %}any{% endif %}"
+                    value="{{ value }}" data-default="{{ original }}">
+                <div class="default">
+                    <span class="hint">Model: {{ original }}{% if not is_int %}%{% endif %}</span>
+                    <button type="button" class="reset-one" data-target="f-{{ key }}">reset</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="actions">
+            <button type="submit" form="dcf-form" class="btn">Re-run with these assumptions</button>
+            <button type="button" class="btn btn-ghost" id="reset-all">Reset all to model</button>
         </div>
 
-        <div class="metric">
-            <strong>Equity Value:</strong>
-            ₹{{ result.equity_value|floatformat:0 }}
+        {% if result.growth_sources %}
+        <div class="growth-box">
+            <h4>How the growth rate was estimated</h4>
+            <table class="kv">
+                {% for label, value, weight in result.growth_sources %}
+                <tr><th>{{ label }}</th><td>{{ value }} <span class="hint">× {{ weight }}</span></td></tr>
+                {% endfor %}
+                <tr class="total"><th>Blended growth</th><td>{{ result.blended_growth }}</td></tr>
+            </table>
+            <p class="hint">If the blend is above what the industry typically sustains, the model keeps the
+                industry rate for more high-growth years instead of using a higher rate.</p>
         </div>
+        {% endif %}
+    </section>
 
-        <div class="metric">
-            <strong>Per Share Value:</strong>
-            ₹{{ result.per_share_value|floatformat:0 }}
-        </div>
+    {% if result %}
+    <div>
+        <section class="panel">
+            <h3>Value bridge <span class="hint">({{ result.currency }})</span></h3>
+            <table class="kv">
+                {% for label, value in result.bridge %}
+                <tr {% if label == "Equity value" or label == "Enterprise value" %}class="total"{% endif %}>
+                    <th>{{ label }}</th><td>{{ value }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </section>
+        <section class="panel">
+            <h3>Cost of capital</h3>
+            <table class="kv">
+                {% for label, value in result.capital %}
+                <tr><th>{{ label }}</th><td>{{ value }}</td></tr>
+                {% endfor %}
+            </table>
+        </section>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
 
-        <h3>DCF Forecast</h3>
-
+{% if result %}
+<details class="panel" open>
+    <summary><span>Forecast <span class="hint">· {{ result.currency }} {{ result.unit }}</span></span></summary>
+    <div class="scroll">
         <table>
-            <tr>
-                {% for col in result.dcf_table.columns %}
-                <th>{{ col }}</th>
-                {% endfor %}
-            </tr>
-
-            {% for _, row in result.dcf_table.iterrows %}
-            <tr>
-                {% for val in row %}
-                <td>{{ val|floatformat:0 }}</td>
-                {% endfor %}
-            </tr>
+            <tr>{% for col in result.forecast.columns %}<th>{{ col }}</th>{% endfor %}</tr>
+            {% for row in result.forecast.rows %}
+            <tr>{% for val in row %}<td>{{ val }}</td>{% endfor %}</tr>
             {% endfor %}
         </table>
-        {% endif %}
-    </main>
+    </div>
+</details>
 
-    <footer id="page-footer">
-        <p>© 2025 StockVision | Tracking Bulls, Bears & Beyond</p>
-    </footer>
+<details class="panel">
+    <summary><span>Historical fundamentals <span class="hint">· {{ result.currency }} {{ result.unit }}</span></span></summary>
+    <div class="scroll">
+        <table>
+            <tr>{% for col in result.history.columns %}<th>{{ col }}</th>{% endfor %}</tr>
+            {% for row in result.history.rows %}
+            <tr>{% for val in row %}<td>{{ val }}</td>{% endfor %}</tr>
+            {% endfor %}
+        </table>
+    </div>
+</details>
+{% endif %}
+{% endblock %}
 
-    <!-- === SNOWFALL BACKGROUND === -->
-    <canvas id="snowfall-bg"></canvas>
-    <script>
-        document.addEventListener("DOMContentLoaded", function () {
-            const canvas = document.getElementById("snowfall-bg");
-            const ctx = canvas.getContext("2d");
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
+{% block extra_js %}
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const form = document.getElementById("dcf-form");
+        const tickerInput = document.getElementById("ticker");
+        const industryInput = document.getElementById("industry");
+        const startTicker = tickerInput.value.trim().toUpperCase();
+        const startIndustry = industryInput.value;
+        const assumptionInputs = () => document.querySelectorAll('input[form="dcf-form"]');
 
-            // 🔹 Use actual Sharpe ratio from context
-            const sharpeRatio = parseFloat("{{ sharpe|default:0 }}");
-            let snowColor = "rgba(255,255,255,0.9)";
-            let glowColor = "#FFFFFF";
-
-            if (!isNaN(sharpeRatio)) {
-                if (sharpeRatio >= 1) {
-                    snowColor = "rgba(0,255,153,0.85)";
-                    glowColor = "#00FF99";
-                } else if (sharpeRatio < 1) {
-                    snowColor = "rgba(255,51,102,0.85)";
-                    glowColor = "#FF3366";
-                }
-            }
-
-            const flakes = [];
-            const num = 100;
-            for (let i = 0; i < num; i++) {
-                flakes.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, r: Math.random() * 2 + 0.5, d: Math.random() + 0.5 });
-            }
-
-            function draw() {
-                ctx.fillStyle = "rgba(0,0,0,1)";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = snowColor;
-                ctx.shadowBlur = 10;
-                ctx.shadowColor = glowColor;
-
-                flakes.forEach(f => {
-                    ctx.beginPath();
-                    ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
-                    ctx.fill();
-                });
-                move();
-                requestAnimationFrame(draw);
-            }
-
-            let angle = 0;
-            function move() {
-                angle += 0.01;
-                flakes.forEach(f => {
-                    f.y += Math.pow(f.d, 2) + 0.5;
-                    f.x += Math.sin(angle) * 0.5;
-                    if (f.y > canvas.height) { f.y = -5; f.x = Math.random() * canvas.width; }
-                });
-            }
-            draw();
+        // A new ticker/industry starts fresh: don't send the old company's assumptions.
+        form.addEventListener("submit", function () {
+            const fresh = tickerInput.value.trim().toUpperCase() !== startTicker
+                || industryInput.value !== startIndustry;
+            if (fresh) assumptionInputs().forEach(i => i.disabled = true);
         });
+        window.addEventListener("pageshow", () => assumptionInputs().forEach(i => i.disabled = false));
 
-        document.addEventListener("DOMContentLoaded", function () {
-            const toggle = document.querySelector(".dropdown-toggle");
-            const menu = document.querySelector(".dropdown-menu");
-
-            toggle.addEventListener("click", function (e) {
-                e.stopPropagation();
-                menu.style.display = menu.style.display === "flex" ? "none" : "flex";
-            });
-
-            document.addEventListener("click", function () {
-                menu.style.display = "none";
+        function markChanged(input) {
+            input.classList.toggle("changed", parseFloat(input.value) !== parseFloat(input.dataset.default));
+        }
+        document.querySelectorAll("input[data-default]").forEach(input => {
+            markChanged(input);
+            input.addEventListener("input", () => markChanged(input));
+        });
+        document.querySelectorAll(".reset-one").forEach(btn => btn.addEventListener("click", function () {
+            const input = document.getElementById(btn.dataset.target);
+            input.value = input.dataset.default;
+            markChanged(input);
+        }));
+        const resetAll = document.getElementById("reset-all");
+        if (resetAll) resetAll.addEventListener("click", function () {
+            document.querySelectorAll("input[data-default]").forEach(input => {
+                input.value = input.dataset.default;
+                markChanged(input);
             });
         });
-
-        document.addEventListener("DOMContentLoaded", function () {
-
-            const addBtn = document.getElementById("add-row");
-            const formContainer = document.getElementById("form-container");
-            const totalForms = document.querySelector("#id_form-TOTAL_FORMS");
-
-            if (!addBtn || !formContainer || !totalForms) return;
-
-            addBtn.addEventListener("click", function () {
-                const formCount = parseInt(totalForms.value);
-                const firstRow = formContainer.querySelector(".asset-row");
-
-                if (!firstRow) return;
-
-                // Clone first form row
-                const newRow = firstRow.cloneNode(true);
-
-                // Update input names and ids
-                newRow.querySelectorAll("input").forEach(input => {
-                    input.value = "";
-                    input.name = input.name.replace(/-\d+-/, `-${formCount}-`);
-                    input.id = input.id.replace(/-\d+-/, `-${formCount}-`);
-                });
-
-                formContainer.appendChild(newRow);
-                totalForms.value = formCount + 1;
-            });
-        });
-
-    </script>
-
-</body>
-
-</html>
+    });
+</script>
+{% endblock %}

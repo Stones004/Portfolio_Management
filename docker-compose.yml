@@ -1,33 +1,31 @@
+# Local stack that mirrors production (Postgres like Neon, gunicorn like Render).
+#   docker compose up --build   ->  http://localhost:8000
 services:
   db:
-    image: mysql:8.0
-    container_name: stock_project-db
-    restart: always
+    image: postgres:16-alpine
     environment:
-      MYSQL_DATABASE: stockapp_db
-      MYSQL_ROOT_PASSWORD: 1234
+      POSTGRES_DB: stockapp
+      POSTGRES_USER: stockapp
+      POSTGRES_PASSWORD: stockapp
     ports:
-      - "3307:3306"
+      - "5433:5432"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stockapp -d stockapp"]
+      interval: 2s
+      retries: 20
 
   web:
     build: .
-    container_name: stock_project-web
-    command: >
-      sh -c " /wait-for-mysql.sh python manage.py migrate && python manage.py runserver 0.0.0.0:8000 "
-    volumes:
-      - .:/app
     ports:
       - "8000:8000"
-    depends_on:
-      - db
     environment:
-      DB_HOST: db
-      DB_PORT: 3306
-      DB_NAME: stockapp_db
-      DB_USER: root
-      DB_PASSWORD: 1234
+      DATABASE_URL: postgresql://stockapp:stockapp@db:5432/stockapp
+      DJANGO_DEBUG: "True"
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
-  mysql_data:
+  pg_data:

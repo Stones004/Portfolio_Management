@@ -1,16 +1,15 @@
-# Secrets
+# Secrets (settings.py reads everything sensitive from the environment / .env)
 .env
-settings.py
+
 # Python
 __pycache__/
 *.pyc
 
 # Virtual environments
 venv/
+.venv/
 env/
 
 # Django
 db.sqlite3
 staticfiles/
-stockapp/__pycache__/views.cpython-311.pyc
-stocksite/settings.py
