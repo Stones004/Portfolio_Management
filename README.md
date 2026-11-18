@@ -13,6 +13,7 @@ Yahoo Finance (via `yfinance`).
 | **Portfolio** | Enter or upload (CSV/Excel) holdings → 5-year annual return, volatility, Sharpe ratio, 1-day 95% VaR / CVaR, per-stock stats, returns histogram. Save / load / delete portfolios per user. |
 | **Efficient Frontier** | Simulates 30,000 long-only portfolios (vectorised Monte Carlo) and shows the max-Sharpe and min-volatility mixes vs your current weights, with a reallocation table. |
 | **DCF Valuation** | Intrinsic value per share with a model chosen by industry, editable assumptions, value bridge, cost-of-capital breakdown, forecast and history tables. |
+| **Portfolio DCF** | Runs the DCF on every holding of a saved portfolio (one stock at a time from the browser, so no request timeouts), with price vs intrinsic value, upside and verdict per stock and a weight-averaged portfolio upside. Each user's latest valuation per ticker is saved. |
 
 ### How the DCF works
 
@@ -75,4 +76,4 @@ With no environment variables set, the app uses SQLite and `DEBUG=True`. To mirr
    - `DJANGO_DEBUG`: `False`
 3. **Deploy.** `entrypoint.sh` runs `migrate` (which creates the tables in Neon), then `collectstatic`, then starts gunicorn on `$PORT` with a 120-second timeout.
 
-Without `DATABASE_URL` the app falls back to SQLite, and SQLite on Render is wiped on every deploy.
+Without `DATABASE_URL` the app falls back to SQLite, and SQLite on Render is wiped on every deploy and restart, so users would have to register again. The deploy log shows warning `stockapp.W001` when this happens. Alternative: attach a Render persistent disk (paid plans) and set `SQLITE_PATH=/var/data/db.sqlite3`.

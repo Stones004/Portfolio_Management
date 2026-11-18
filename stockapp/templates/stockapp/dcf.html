@@ -1,53 +1,95 @@
 {% extends "stockapp/base.html" %}
 
 {% block title %}DCF Valuation{% endblock %}
+{% block crumb %}DCF valuation{% endblock %}
 
 {% block extra_css %}
 <style>
-    .search { display: grid; grid-template-columns: 2fr 2fr auto; gap: 14px; align-items: end; }
-    .search > * { min-width: 0; }
-    .company { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; align-items: center; }
-    .company h2 { margin: 0; font-size: 22px; color: #fff; }
-    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-    .chip { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
-    .chip.model { color: #000; background: var(--accent); border-color: var(--accent); font-weight: 600; }
-    .verdict { font-size: 14px; font-weight: 700; padding: 8px 14px; border-radius: 10px; }
-    .verdict.up { color: var(--up); background: rgba(0, 230, 138, 0.1); border: 1px solid rgba(0, 230, 138, 0.4); }
-    .verdict.down { color: var(--down); background: rgba(255, 92, 122, 0.1); border: 1px solid rgba(255, 92, 122, 0.4); }
-    .verdict.fair { color: var(--warn); background: rgba(255, 204, 77, 0.1); border: 1px solid rgba(255, 204, 77, 0.4); }
-    .note { color: var(--muted); font-size: 13px; margin: 12px 0 0; }
-    .split { display: flex; height: 12px; border-radius: 6px; overflow: hidden; margin: 10px 0 8px; background: #111; }
-    .split .a { background: var(--accent-2); }
-    .split .b { background: var(--accent); opacity: .55; }
-    .legend { display: flex; gap: 16px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
-    .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
-    .assumptions { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
-    .assumptions .field label { color: #cfe; font-size: 13px; }
-    .assumptions .default { display: flex; justify-content: space-between; margin-top: 4px; }
-    .reset-one { background: none; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 0; font-family: inherit; }
-    .reset-one:hover { text-decoration: underline; }
-    .field input.changed { border-color: var(--warn); }
-    .actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
-    .growth-box { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
-    .growth-box h4 { margin: 0 0 8px; font-size: 14px; color: #cfe; }
-    @media (max-width: 600px) {
-        .search { grid-template-columns: 1fr; }
-        .assumptions { grid-template-columns: 1fr; }
+    .search { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) auto; gap: 16px; align-items: end; }
+    .search-input { position: relative; }
+    .search-input svg { position: absolute; left: 13px; bottom: 13px; width: 16px; height: 16px; color: var(--muted); pointer-events: none; }
+    .search-input input { padding-left: 38px !important; text-transform: uppercase; font-weight: 600; letter-spacing: .3px; }
+    .search-input input::placeholder { text-transform: none; font-weight: 400; letter-spacing: 0; }
+
+    .company { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 18px; align-items: center; }
+    .company-id { display: flex; gap: 16px; align-items: center; min-width: 0; }
+    .monogram { width: 54px; height: 54px; border-radius: 14px; display: grid; place-items: center; flex: none; font-family: var(--serif); font-size: 28px; color: var(--gold); background: var(--gold-soft); border: 1px solid var(--gold-line); }
+    .company h2 { margin: 0 0 8px; font-family: var(--serif); font-weight: 400; font-size: 30px; line-height: 1.1; }
+    .company h2 .tkr { font-family: var(--font); font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .5px; margin-left: 6px; vertical-align: middle; }
+    .verdict { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; padding: 12px 18px; border-radius: 12px; border: 1px solid; }
+    .verdict .v-label { font-size: 11px; font-weight: 600; letter-spacing: 1.4px; text-transform: uppercase; }
+    .verdict .v-num { font-size: 26px; font-weight: 700; letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
+    .verdict.up { color: var(--up); background: var(--up-soft); border-color: color-mix(in srgb, var(--up) 35%, transparent); }
+    .verdict.down { color: var(--down); background: var(--down-soft); border-color: color-mix(in srgb, var(--down) 35%, transparent); }
+    .verdict.fair { color: var(--warn); background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
+    .note { color: var(--text-2); font-size: 13px; margin: 16px 0 0; padding-top: 16px; border-top: 1px solid var(--line); }
+
+    /* price vs value gauge */
+    .gauge { position: relative; margin: 58px 0 38px; }
+    .gauge-track { position: relative; height: 8px; border-radius: 5px; background: var(--surface-3); }
+    .gauge-span { position: absolute; top: 0; bottom: 0; border-radius: 5px; left: var(--lo); width: 0; transition: width 1.4s var(--ease) .3s; }
+    .gauge-span.up { background: linear-gradient(90deg, color-mix(in srgb, var(--up) 30%, transparent), var(--up)); }
+    .gauge-span.down { background: linear-gradient(270deg, color-mix(in srgb, var(--down) 30%, transparent), var(--down)); }
+    .in .gauge-span, .no-js .gauge-span { width: var(--span); }
+    .marker { position: absolute; top: 50%; left: 0; transform: translate(-50%, -50%); transition: left 1.4s var(--ease) .3s; }
+    .in .marker, .no-js .marker { left: var(--x); }
+    .marker .pin { width: 16px; height: 16px; border-radius: 50%; border: 3px solid var(--surface); box-shadow: 0 0 0 1px var(--line-strong); }
+    .marker.price .pin { background: var(--text-2); }
+    .marker.value .pin { background: var(--gold); box-shadow: 0 0 0 1px var(--gold), 0 0 18px var(--gold); }
+    .marker .cap { position: absolute; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 11.5px; color: var(--muted); text-align: center; }
+    .marker .cap b { display: block; color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums; }
+    .marker.price .cap { top: 22px; }
+    .marker.value .cap { bottom: 22px; }
+    .marker.value .cap b { color: var(--gold); }
+
+    .split { display: flex; height: 8px; border-radius: 5px; overflow: hidden; margin: 12px 0 8px; background: var(--surface-3); }
+    .split span { width: 0; transition: width 1.3s var(--ease) .2s; }
+    .in .split span, .no-js .split span { width: var(--w); }
+    .split .a { background: var(--info); }
+    .split .b { background: var(--gold); }
+    .legend { display: flex; gap: 14px; font-size: 11.5px; color: var(--muted); flex-wrap: wrap; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; }
+
+    .assumptions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 18px; }
+    .assumptions .default { display: flex; justify-content: space-between; margin-top: 6px; }
+    .field input.changed { border-color: var(--warn); box-shadow: 0 0 0 4px var(--warn-soft); }
+    .changed-badge { display: none; font-size: 10px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; color: var(--warn); margin-left: 6px; }
+    .field:has(input.changed) .changed-badge { display: inline; }
+    .quick-picks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+    .quick-picks .hint { margin-right: 4px; }
+    .chip.pick { cursor: pointer; font-family: inherit; font-weight: 600; transition: border-color .2s, color .2s, transform .25s var(--ease); }
+    .chip.pick:hover { color: var(--gold); border-color: var(--gold-line); transform: translateY(-1px); }
+    .chip.pick.on { color: var(--gold); border-color: var(--gold-line); background: var(--gold-soft); }
+    .qp-all { margin-left: auto; font-size: 12.5px; font-weight: 600; }
+    .actions { display: flex; gap: 10px; margin-top: 22px; flex-wrap: wrap; }
+    .growth-box { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+    .growth-box h4 { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+
+    @media (max-width: 760px) {
+        .search { grid-template-columns: minmax(0, 1fr); }
+        .assumptions { grid-template-columns: minmax(0, 1fr); }
+        .verdict { align-items: flex-start; }
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<h1>DCF Valuation</h1>
-<p class="subtitle">Intrinsic value per share from an industry-specific, Damodaran-style model.</p>
+<div class="page-head">
+    <div>
+        <div class="eyebrow">Equity research</div>
+        <h1>DCF <em>valuation</em></h1>
+        <p class="lede">Intrinsic value per share from an industry-specific, Damodaran-style discounted cash flow model.</p>
+    </div>
+</div>
 
-<form method="post" id="dcf-form" class="panel" data-loading="Fetching financials and running the valuation…">
+<form method="post" id="dcf-form" class="panel" data-loading="Running the valuation…" data-steps="Fetching financial statements|Classifying the industry|Estimating cost of capital|Triangulating growth|Discounting cash flows">
     {% csrf_token %}
     <div class="search">
-        <div class="field">
+        <div class="field search-input">
             <label for="ticker">Stock ticker</label>
             <input type="text" id="ticker" name="ticker" placeholder="INFY.NS, HDFCBANK.NS, AAPL"
                 value="{{ ticker }}" required autocomplete="off">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
         </div>
         <div class="field">
             <label for="industry">
@@ -61,20 +103,34 @@
                 {% endfor %}
             </select>
         </div>
-        <button type="submit" class="btn">{% if show_inputs %}Re-run DCF{% else %}Run DCF{% endif %}</button>
+        <button type="submit" class="btn">
+            {% if show_inputs %}Re-run DCF{% else %}Run DCF{% endif %}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
     </div>
     {% if show_inputs %}
-    <p class="hint" style="margin:10px 0 0;">Changing the ticker or industry model starts a fresh valuation with model defaults.</p>
+    <p class="hint" style="margin:12px 0 0;">Changing the ticker or industry model starts a fresh valuation with model defaults.</p>
+    {% endif %}
+    {% if portfolio_symbols %}
+    <div class="quick-picks">
+        <span class="hint">From your portfolios</span>
+        {% for s in portfolio_symbols %}<button type="button" class="chip pick{% if s == ticker %} on{% endif %}" data-ticker="{{ s }}">{{ s }}</button>{% endfor %}
+        <a class="qp-all" href="{% url 'portfolio_dcf' %}" data-transition>Value a whole portfolio →</a>
+    </div>
     {% endif %}
 </form>
 
 {% if error %}
-<div class="error">⚠ {{ error }}</div>
+<div class="alert error"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg><span>{{ error }}</span></div>
 {% endif %}
 
 {% if not result and not error %}
-<div class="panel empty">
-    <p><strong>Enter a ticker to value a company.</strong></p>
+<div class="panel empty-state">
+    <svg class="art" viewBox="0 0 120 80" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M14 30 60 8l46 22" /><path d="M22 30v36M42 30v36M78 30v36M98 30v36" opacity=".45"/><path d="M10 70h100"/>
+        <circle cx="60" cy="46" r="10"/><path d="M60 41v10M57 44h4.5a1.8 1.8 0 0 1 0 3.5h-3a1.8 1.8 0 0 0 0 3.5H63"/>
+    </svg>
+    <h3>Enter a ticker to value a company.</h3>
     <p>Indian stocks need <code>.NS</code> (NSE) or <code>.BO</code> (BSE). Banks, insurers and NBFCs
         are valued with an equity (FCFE) model; everything else with an FCFF model at WACC.</p>
     <p class="hint">The first run fetches several years of financials and can take 10–20 seconds.</p>
@@ -84,73 +140,95 @@
 {% if result %}
 <section class="panel">
     <div class="company">
-        <div>
-            <h2>{{ result.name }} <span class="hint">({{ ticker }})</span></h2>
-            <div class="chips">
-                <span class="chip model">{{ result.model|upper }}</span>
-                <span class="chip">{{ result.profile_label }}</span>
-                {% if result.sector %}<span class="chip">{{ result.sector }}</span>{% endif %}
-                {% if result.industry %}<span class="chip">{{ result.industry }}</span>{% endif %}
+        <div class="company-id">
+            <div class="monogram" aria-hidden="true">{{ result.name|slice:":1" }}</div>
+            <div style="min-width:0">
+                <h2>{{ result.name }}<span class="tkr">{{ ticker }}</span></h2>
+                <div class="chips">
+                    <span class="chip gold">{{ result.model|upper }}</span>
+                    <span class="chip">{{ result.profile_label }}</span>
+                    {% if result.sector %}<span class="chip">{{ result.sector }}</span>{% endif %}
+                    {% if result.industry %}<span class="chip">{{ result.industry }}</span>{% endif %}
+                </div>
             </div>
         </div>
         {% if result.upside %}
-        <div class="verdict {{ result.verdict_class }}">{{ result.verdict }} · {{ result.upside }}</div>
+        <div class="verdict {{ result.verdict_class }}">
+            <span class="v-label">{{ result.verdict }}</span>
+            <span class="v-num" data-count>{{ result.upside }}</span>
+        </div>
         {% endif %}
     </div>
+
+    {% if result.gauge %}
+    <div class="gauge" aria-label="Market price versus intrinsic value">
+        <div class="gauge-track">
+            <div class="gauge-span {% if result.upside_positive %}up{% else %}down{% endif %}" style="--lo: {{ result.gauge.lo_pct }}%; --span: {{ result.gauge.span_pct }}%"></div>
+            <div class="marker value" style="--x: {{ result.gauge.value_pct }}%"><div class="pin"></div><div class="cap"><b>{{ result.currency }} {{ result.per_share_value }}</b>Intrinsic value</div></div>
+            <div class="marker price" style="--x: {{ result.gauge.price_pct }}%"><div class="pin"></div><div class="cap"><b>{{ result.currency }} {{ result.current_price }}</b>Market price</div></div>
+        </div>
+    </div>
+    {% endif %}
+
     <p class="note">{{ result.profile_note }}</p>
     {% for w in result.warnings %}
-    <div class="warning">⚠ {{ w }}</div>
+    <div class="alert warning"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 2 21h20L12 3z"/><path d="M12 10v4M12 18h.01"/></svg><span>{{ w }}</span></div>
     {% endfor %}
 </section>
 
 <div class="kpis">
     <div class="kpi hero">
-        <div class="label">Intrinsic value / share</div>
-        <div class="value">{{ result.currency }} {{ result.per_share_value }}</div>
-        <div class="sub">from the assumptions below</div>
+        <div class="kpi-label">Intrinsic value / share</div>
+        <div class="kpi-value"><small>{{ result.currency }}</small><span data-count>{{ result.per_share_value }}</span></div>
+        <div class="kpi-sub">From the assumptions below</div>
     </div>
     <div class="kpi">
-        <div class="label">Market price</div>
-        <div class="value">{{ result.currency }} {{ result.current_price }}</div>
+        <div class="kpi-label">Market price</div>
+        <div class="kpi-value"><small>{{ result.currency }}</small><span data-count>{{ result.current_price }}</span></div>
         {% if result.upside %}
-        <div class="sub {% if result.upside_positive %}up{% else %}down{% endif %}">{{ result.upside_text }}</div>
+        <div class="kpi-sub {% if result.upside_positive %}up{% else %}down{% endif %}">{{ result.upside_text }}</div>
         {% endif %}
     </div>
     <div class="kpi">
-        <div class="label">Equity value</div>
-        <div class="value">{{ result.currency }} {{ result.equity_value }}</div>
-        <div class="sub">{% if result.enterprise_value %}Enterprise value {{ result.currency }} {{ result.enterprise_value }}{% else %}Banks: valued directly as equity{% endif %}</div>
+        <div class="kpi-label">Equity value</div>
+        <div class="kpi-value"><small>{{ result.currency }}</small>{{ result.equity_value }}</div>
+        <div class="kpi-sub">{% if result.enterprise_value %}Enterprise value {{ result.currency }} {{ result.enterprise_value }}{% else %}Banks: valued directly as equity{% endif %}</div>
     </div>
     <div class="kpi">
-        <div class="label">Value from terminal</div>
-        <div class="value">{{ result.terminal_share }}</div>
+        <div class="kpi-label">Value from terminal</div>
+        <div class="kpi-value">{{ result.terminal_share }}</div>
         <div class="split" aria-hidden="true">
-            <div class="a" style="width: {{ result.forecast_pct }}%"></div>
-            <div class="b" style="width: {{ result.terminal_pct }}%"></div>
+            <span class="a" style="--w: {{ result.forecast_pct }}%"></span>
+            <span class="b" style="--w: {{ result.terminal_pct }}%"></span>
         </div>
         <div class="legend">
-            <span><span class="dot" style="background:var(--accent-2)"></span>Forecast years</span>
-            <span><span class="dot" style="background:var(--accent);opacity:.55"></span>Terminal</span>
+            <span><span class="dot" style="background:var(--info)"></span>Forecast</span>
+            <span><span class="dot" style="background:var(--gold)"></span>Terminal</span>
         </div>
     </div>
 </div>
 {% endif %}
 
 {% if show_inputs %}
-<div class="two-col">
+<div class="grid-2">
     <!-- Assumption inputs belong to #dcf-form via the HTML form attribute -->
     <section class="panel">
-        <h3>Assumptions</h3>
+        <div class="panel-head">
+            <div class="panel-title">
+                <span class="panel-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></span>
+                <div><h3>Assumptions</h3><div class="sub">Edit any input and re-run; changed values are highlighted</div></div>
+            </div>
+        </div>
         <div class="assumptions">
             {% for key, label, original, value, is_int in fields %}
             <div class="field">
-                <label for="f-{{ key }}">{{ label }}</label>
+                <label for="f-{{ key }}">{{ label }}<span class="changed-badge">edited</span></label>
                 <input type="number" id="f-{{ key }}" name="{{ key }}" form="dcf-form"
                     step="{% if is_int %}1{% else %}any{% endif %}"
                     value="{{ value }}" data-default="{{ original }}">
                 <div class="default">
                     <span class="hint">Model: {{ original }}{% if not is_int %}%{% endif %}</span>
-                    <button type="button" class="reset-one" data-target="f-{{ key }}">reset</button>
+                    <button type="button" class="link-btn reset-one" data-target="f-{{ key }}">Reset</button>
                 </div>
             </div>
             {% endfor %}
@@ -176,9 +254,9 @@
     </section>
 
     {% if result %}
-    <div>
+    <div class="stack">
         <section class="panel">
-            <h3>Value bridge <span class="hint">({{ result.currency }})</span></h3>
+            <div class="panel-head"><div><h3>Value bridge</h3><div class="sub">From operating value to equity, {{ result.currency }}</div></div></div>
             <table class="kv">
                 {% for label, value in result.bridge %}
                 <tr {% if label == "Equity value" or label == "Enterprise value" %}class="total"{% endif %}>
@@ -188,7 +266,7 @@
             </table>
         </section>
         <section class="panel">
-            <h3>Cost of capital</h3>
+            <div class="panel-head"><div><h3>Cost of capital</h3><div class="sub">Discount-rate build-up</div></div></div>
             <table class="kv">
                 {% for label, value in result.capital %}
                 <tr><th>{{ label }}</th><td>{{ value }}</td></tr>
@@ -202,9 +280,12 @@
 
 {% if result %}
 <details class="panel" open>
-    <summary><span>Forecast <span class="hint">· {{ result.currency }} {{ result.unit }}</span></span></summary>
-    <div class="scroll">
-        <table>
+    <summary>
+        <div><h3>Forecast</h3><div class="hint">{{ result.currency }} {{ result.unit }}</div></div>
+        <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></span>
+    </summary>
+    <div class="table-wrap">
+        <table class="data wide">
             <tr>{% for col in result.forecast.columns %}<th>{{ col }}</th>{% endfor %}</tr>
             {% for row in result.forecast.rows %}
             <tr>{% for val in row %}<td>{{ val }}</td>{% endfor %}</tr>
@@ -214,9 +295,12 @@
 </details>
 
 <details class="panel">
-    <summary><span>Historical fundamentals <span class="hint">· {{ result.currency }} {{ result.unit }}</span></span></summary>
-    <div class="scroll">
-        <table>
+    <summary>
+        <div><h3>Historical fundamentals</h3><div class="hint">{{ result.currency }} {{ result.unit }}</div></div>
+        <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></span>
+    </summary>
+    <div class="table-wrap">
+        <table class="data wide">
             <tr>{% for col in result.history.columns %}<th>{{ col }}</th>{% endfor %}</tr>
             {% for row in result.history.rows %}
             <tr>{% for val in row %}<td>{{ val }}</td>{% endfor %}</tr>
@@ -237,6 +321,13 @@
         const startIndustry = industryInput.value;
         const assumptionInputs = () => document.querySelectorAll('input[form="dcf-form"]');
 
+        // One-click valuation of a ticker from the user's saved portfolios.
+        document.querySelectorAll(".chip.pick").forEach(btn => btn.addEventListener("click", () => {
+            tickerInput.value = btn.dataset.ticker;
+            industryInput.value = "";
+            form.requestSubmit();
+        }));
+
         // A new ticker/industry starts fresh: don't send the old company's assumptions.
         form.addEventListener("submit", function () {
             const fresh = tickerInput.value.trim().toUpperCase() !== startTicker
@@ -244,6 +335,11 @@
             if (fresh) assumptionInputs().forEach(i => i.disabled = true);
         });
         window.addEventListener("pageshow", () => assumptionInputs().forEach(i => i.disabled = false));
+        {% if autorun %}
+        // Arrived from a "DCF →" link: run straight away (shows the loading overlay).
+        if (window.history.replaceState) window.history.replaceState(null, "", window.location.pathname);
+        form.requestSubmit();
+        {% endif %}
 
         function markChanged(input) {
             input.classList.toggle("changed", parseFloat(input.value) !== parseFloat(input.dataset.default));

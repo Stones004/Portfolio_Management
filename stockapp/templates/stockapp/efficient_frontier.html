@@ -1,86 +1,122 @@
 {% extends "stockapp/base.html" %}
 
 {% block title %}Efficient Frontier{% endblock %}
+{% block crumb %}Efficient frontier{% endblock %}
 
 {% block extra_css %}
 <style>
-    .opt-form { display: grid; grid-template-columns: 2fr 1fr auto; gap: 14px; align-items: end; }
-    .opt-form > * { min-width: 0; }
-    td.pos { color: var(--up); }
-    td.neg { color: var(--down); }
-    @media (max-width: 600px) { .opt-form { grid-template-columns: 1fr; } }
+    .opt-form { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto; gap: 16px; align-items: end; }
+    .opt-form .dropzone { padding: 0 14px; height: 42px; border-style: dashed; }
+    .opt-form .dropzone .dz-icon { width: 28px; height: 28px; border: 0; background: none; }
+    .weights-cell { display: flex; flex-direction: column; gap: 4px; min-width: 120px; }
+    .weights-cell .bar { height: 5px; }
+    .chg { font-weight: 600; }
+    .legend-row { display: flex; gap: 14px; font-size: 11.5px; color: var(--muted); }
+    .legend-row i { display: inline-block; width: 10px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+    @media (max-width: 760px) { .opt-form { grid-template-columns: minmax(0, 1fr); } }
 </style>
 {% endblock %}
 
 {% block content %}
-<h1>Efficient Frontier</h1>
-<p class="subtitle">Simulates thousands of long-only portfolios from your stocks and finds the best risk/return mix.</p>
+<div class="page-head">
+    <div>
+        <div class="eyebrow">Optimisation</div>
+        <h1>Efficient <em>frontier</em></h1>
+        <p class="lede">Simulates thousands of long-only portfolios from your holdings to find the best balance of risk and return.</p>
+    </div>
+</div>
 
-{% if error %}<div class="error">⚠ {{ error }}</div>{% endif %}
-{% if message %}<div class="message">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert error"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg><span>{{ error }}</span></div>{% endif %}
+{% if message %}<div class="alert success"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg><span>{{ message }}</span></div>{% endif %}
 
-<form method="post" enctype="multipart/form-data" class="panel" data-loading="Simulating portfolios…">
+<form method="post" enctype="multipart/form-data" class="panel" data-loading="Simulating portfolios…" data-steps="Reading your holdings|Downloading price history|Estimating returns and covariance|Simulating 30,000 portfolios|Locating the efficient frontier">
     {% csrf_token %}
     <div class="opt-form">
         <div class="field">
-            <label for="file">Holdings file (CSV/Excel with <code>symbol</code>, <code>weight</code>)</label>
-            <input type="file" id="file" name="file" accept=".csv,.xls,.xlsx" required>
+            <label for="file">Holdings file</label>
+            <label class="dropzone">
+                <input type="file" id="file" name="file" accept=".csv,.xls,.xlsx" required>
+                <span class="dz-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5M12 3v12"/></svg></span>
+                <span class="dz-text"><span class="dz-title">Choose a CSV or Excel file with symbol, weight</span></span>
+            </label>
         </div>
         <div class="field">
             <label for="rf">Risk-free rate</label>
             <input type="number" id="rf" step="any" name="risk_free_rate" value="{{ risk_free_rate }}">
         </div>
-        <button type="submit" class="btn">🚀 Optimise</button>
+        <button type="submit" class="btn">
+            Optimise
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
     </div>
-    <p class="hint" style="margin:10px 0 0;">Tip: analyse a portfolio on the <a href="{% url 'home' %}">Portfolio</a> page and press “Optimise” to skip the upload. Risk-free rate as a decimal (0.05) or percent (5).</p>
+    <p class="hint" style="margin:12px 0 0;">Tip: analyse a portfolio on the <a href="{% url 'home' %}">Portfolio</a> page and press “Optimise” to skip the upload. Risk-free rate as a decimal (0.05) or percent (5).</p>
 </form>
 
 {% if frontier_plot %}
 <div class="kpis">
     <div class="kpi hero">
-        <div class="label">Max-Sharpe return</div>
-        <div class="value">{{ portfolio_metrics.return }}%</div>
-        <div class="sub">volatility {{ portfolio_metrics.volatility }}% · Sharpe {{ portfolio_metrics.sharpe }}</div>
+        <div class="kpi-label">Max-Sharpe return</div>
+        <div class="kpi-value"><span data-count>{{ portfolio_metrics.return }}</span>%</div>
+        <div class="kpi-sub">Volatility {{ portfolio_metrics.volatility }}% · Sharpe {{ portfolio_metrics.sharpe }}</div>
     </div>
     <div class="kpi">
-        <div class="label">Your portfolio</div>
-        <div class="value">{{ current_metrics.return }}%</div>
-        <div class="sub">volatility {{ current_metrics.volatility }}% · Sharpe {{ current_metrics.sharpe }}</div>
+        <div class="kpi-label">Your portfolio</div>
+        <div class="kpi-value"><span data-count>{{ current_metrics.return }}</span>%</div>
+        <div class="kpi-sub">Volatility {{ current_metrics.volatility }}% · Sharpe {{ current_metrics.sharpe }}</div>
     </div>
     <div class="kpi">
-        <div class="label">Min-volatility</div>
-        <div class="value">{{ min_vol_metrics.volatility }}%</div>
-        <div class="sub">return {{ min_vol_metrics.return }}% · Sharpe {{ min_vol_metrics.sharpe }}</div>
+        <div class="kpi-label">Min-volatility</div>
+        <div class="kpi-value"><span data-count>{{ min_vol_metrics.volatility }}</span>%</div>
+        <div class="kpi-sub">Return {{ min_vol_metrics.return }}% · Sharpe {{ min_vol_metrics.sharpe }}</div>
     </div>
     <div class="kpi">
-        <div class="label">Sharpe improvement</div>
-        <div class="value {% if sharpe_gain > 0 %}up{% endif %}">{% if sharpe_gain > 0 %}+{% endif %}{{ sharpe_gain }}</div>
-        <div class="sub">vs your {{ current_metrics.sharpe|floatformat:2 }}</div>
+        <div class="kpi-label">Sharpe gain {% if sharpe_gain > 0 %}<span class="tag up">▲ Better</span>{% endif %}</div>
+        <div class="kpi-value {% if sharpe_gain > 0 %}up{% endif %}"><span data-count>{% if sharpe_gain > 0 %}+{% endif %}{{ sharpe_gain }}</span></div>
+        <div class="kpi-sub">vs your {{ current_metrics.sharpe|floatformat:2 }}</div>
     </div>
 </div>
 
-<div class="two-col">
+<div class="grid-2">
     <section class="panel">
-        <h3>Frontier</h3>
-        <img src="data:image/png;base64,{{ frontier_plot }}" alt="Efficient frontier scatter plot">
-        <p class="hint">Past returns don't guarantee future returns; treat the optimal weights as a starting point.</p>
+        <div class="panel-head"><div><h3>Risk / return frontier</h3><div class="sub">Each dot is a simulated portfolio, coloured by Sharpe ratio</div></div></div>
+        <div class="chart"><img src="data:image/png;base64,{{ frontier_plot }}" alt="Efficient frontier scatter plot"></div>
+        <p class="hint" style="margin:12px 0 0;">Past returns don't guarantee future returns; treat the optimal weights as a starting point.</p>
     </section>
     <section class="panel">
-        <h3>Suggested reallocation</h3>
-        <div class="scroll">
-            <table>
-                <tr><th>Stock</th><th>Current</th><th>Optimal</th><th>Change</th></tr>
+        <div class="panel-head">
+            <div><h3>Suggested reallocation</h3><div class="sub">Current vs max-Sharpe weights</div></div>
+            <div class="legend-row"><span><i style="background:var(--line-strong)"></i>Current</span><span><i style="background:var(--gold)"></i>Optimal</span></div>
+        </div>
+        <div class="table-wrap">
+            <table class="data">
+                <tr><th>Stock</th><th>Current → optimal</th><th>Change</th></tr>
                 {% for w in weight_changes %}
                 <tr>
                     <td>{{ w.symbol }}</td>
-                    <td>{{ w.old_weight|floatformat:3 }}</td>
-                    <td>{{ w.new_weight|floatformat:3 }}</td>
-                    <td class="{% if w.change > 0 %}pos{% elif w.change < 0 %}neg{% endif %}">{% if w.change > 0 %}+{% endif %}{{ w.change|floatformat:3 }}</td>
+                    <td>
+                        <div class="weights-cell">
+                            <div class="bar"><span class="ghost" style="--w: {% widthratio w.old_weight 1 100 %}%"></span></div>
+                            <div class="bar"><span style="--w: {% widthratio w.new_weight 1 100 %}%"></span></div>
+                            <span class="hint">{{ w.old_weight|floatformat:3 }} → <b style="color:var(--text)">{{ w.new_weight|floatformat:3 }}</b></span>
+                        </div>
+                    </td>
+                    <td class="chg {% if w.change > 0 %}up{% elif w.change < 0 %}down{% endif %}">{% if w.change > 0 %}▲ +{% elif w.change < 0 %}▼ {% endif %}{{ w.change|floatformat:3 }}</td>
                 </tr>
                 {% endfor %}
             </table>
         </div>
     </section>
+</div>
+{% else %}
+<div class="panel empty-state">
+    <svg class="art" viewBox="0 0 120 80" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <path d="M10 70h100M10 70V8" opacity=".35"/>
+        <path d="M16 64C30 30 60 14 108 10" stroke-linecap="round"/>
+        <g fill="currentColor" stroke="none" opacity=".35"><circle cx="40" cy="52" r="2"/><circle cx="55" cy="44" r="2"/><circle cx="70" cy="40" r="2"/><circle cx="48" cy="60" r="2"/><circle cx="82" cy="34" r="2"/><circle cx="65" cy="54" r="2"/><circle cx="90" cy="44" r="2"/></g>
+        <circle cx="62" cy="21" r="4" fill="currentColor" stroke="none"/>
+    </svg>
+    <h3>Find your optimal mix</h3>
+    <p>Upload holdings, or send them from the Portfolio page, to compare your current weights against the max-Sharpe and minimum-volatility portfolios.</p>
 </div>
 {% endif %}
 {% endblock %}

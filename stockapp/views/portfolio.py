@@ -30,6 +30,26 @@ def analyze_holdings(symbols, weights):
     return result
 
 
+def _holdings_from_formset(formset):
+    """Validated (symbols, weights) from the holdings formset; duplicate tickers are combined."""
+    if not formset.is_valid():
+        raise ValueError("Please fix the highlighted rows.")
+    combined = {}
+    for f in formset:
+        data = f.cleaned_data
+        if data and not data.get("DELETE"):
+            symbol = data["symbol"].upper().strip()
+            combined[symbol] = combined.get(symbol, 0.0) + data["weight"]
+    if not combined:
+        raise ValueError("Add at least one stock.")
+    return list(combined), normalise(list(combined.values()))
+
+
+def _create_holdings(portfolio, symbols, weights):
+    Holding.objects.bulk_create([Holding(portfolio=portfolio, symbol=s, weight=w)
+                                 for s, w in zip(symbols, weights)])
+
+
 @login_required
 def home(request):
     portfolios = Portfolio.objects.filter(user=request.user).order_by("-created_at")
@@ -64,20 +84,45 @@ def home(request):
                 ctx["error"] = f"Could not read file: {exc}"
         return render(request, "stockapp/index.html", ctx)
 
+    if action in ("save_holdings", "update_portfolio"):
+        # Save the holdings form as a new portfolio, or overwrite the selected one - no analysis needed.
+        formset = StockFormSet(request.POST)
+        ctx["formset"] = formset
+        try:
+            symbols, weights = _holdings_from_formset(formset)
+        except ValueError as exc:
+            ctx["error"] = str(exc)
+            return render(request, "stockapp/index.html", ctx)
+        if action == "update_portfolio":
+            pid = request.POST.get("portfolio_id", "")
+            portfolio = portfolios.filter(id=int(pid)).first() if pid.isdigit() else None
+            if portfolio is None:
+                ctx["error"] = "That portfolio no longer exists."
+                return render(request, "stockapp/index.html", ctx)
+            with transaction.atomic():
+                portfolio.holdings.all().delete()
+                _create_holdings(portfolio, symbols, weights)
+            messages.success(request, f"Updated portfolio “{portfolio.name}”.")
+        else:
+            name = (request.POST.get("new_portfolio_name") or "").strip()[:100]
+            if not name:
+                ctx["error"] = "Give the portfolio a name to save it."
+                return render(request, "stockapp/index.html", ctx)
+            with transaction.atomic():
+                portfolio = Portfolio.objects.create(user=request.user, name=name)
+                _create_holdings(portfolio, symbols, weights)
+            messages.success(request, f"Saved portfolio “{name}”.")
+        return redirect(f"{request.path}?portfolio_id={portfolio.id}")
+
     if action == "analyze":
         formset = StockFormSet(request.POST)
         ctx["formset"] = formset
-        if not formset.is_valid():
-            ctx["error"] = "Please fix the highlighted rows."
-            return render(request, "stockapp/index.html", ctx)
-        rows = [f.cleaned_data for f in formset
-                if f.cleaned_data and not f.cleaned_data.get("DELETE")]
-        if not rows:
-            ctx["error"] = "Add at least one stock."
+        try:
+            symbols, weights = _holdings_from_formset(formset)
+        except ValueError as exc:
+            ctx["error"] = str(exc)
             return render(request, "stockapp/index.html", ctx)
         try:
-            symbols = [r["symbol"].upper().strip() for r in rows]
-            weights = normalise([r["weight"] for r in rows])
             ctx.update(analyze_holdings(symbols, weights))
         except (DataError, ValueError) as exc:
             ctx["error"] = str(exc)
@@ -98,8 +143,7 @@ def home(request):
             return render(request, "stockapp/index.html", ctx)
         with transaction.atomic():
             portfolio = Portfolio.objects.create(user=request.user, name=name)
-            Holding.objects.bulk_create([Holding(portfolio=portfolio, symbol=s, weight=w)
-                                         for s, w in zip(symbols, weights)])
+            _create_holdings(portfolio, symbols, weights)
         messages.success(request, f"Saved portfolio “{name}”.")
         return redirect(f"{request.path}?portfolio_id={portfolio.id}")
 

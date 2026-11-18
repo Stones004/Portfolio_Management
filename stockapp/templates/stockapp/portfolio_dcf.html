@@ -1,0 +1,260 @@
+{% extends "stockapp/base.html" %}
+
+{% block title %}Portfolio DCF{% endblock %}
+{% block crumb %}Portfolio valuation{% endblock %}
+
+{% block extra_css %}
+<style>
+    .pick-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: end; }
+    .run-status { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 12.5px; color: var(--text-2); min-height: 20px; }
+    .run-status .progress { flex: 1; max-width: 260px; margin: 0; }
+    .run-status .progress span { width: var(--p, 0%); animation: none; background: var(--gold); transition: width .6s var(--ease); }
+
+    table.val td { vertical-align: middle; }
+    table.val td.sym-cell { font-weight: 600; }
+    table.val td.sym-cell .hint { display: block; font-weight: 400; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+    .wcell { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+    .wcell .bar { width: 60px; min-width: 60px; }
+    .diverge { position: relative; width: 120px; height: 8px; border-radius: 4px; background: var(--surface-3); margin-left: auto; }
+    .diverge::before { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--line-strong); }
+    .diverge span { position: absolute; top: 0; bottom: 0; border-radius: 4px; transition: width .9s var(--ease), left .9s var(--ease); width: 0; left: 50%; }
+    .diverge span.pos { background: var(--up); }
+    .diverge span.neg { background: var(--down); }
+    .up-cell { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
+    .up-cell b { min-width: 58px; text-align: right; font-variant-numeric: tabular-nums; }
+    .actions-cell { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
+    .mini-btn { height: 28px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--text-2); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; transition: all .2s; }
+    .mini-btn:hover { color: var(--text); border-color: var(--gold-line); }
+    .mini-btn[disabled] { opacity: .5; cursor: progress; }
+    .row-spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--gold-soft); border-top-color: var(--gold); animation: spin .8s linear infinite; display: inline-block; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    tr.busy td { background: var(--gold-soft); }
+    tr.flash td { animation: flash 1.2s var(--ease); }
+    @keyframes flash { from { background: var(--gold-soft); } to { background: transparent; } }
+    .err { color: var(--down); font-size: 12px; white-space: normal; max-width: 260px; display: inline-block; text-align: right; }
+    .tag.custom { background: var(--warn-soft); color: var(--warn); }
+    @media (max-width: 760px) { .pick-bar { grid-template-columns: minmax(0, 1fr); } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <div class="eyebrow">Portfolio valuation</div>
+        <h1>Portfolio <em>DCF</em></h1>
+        <p class="lede">Run the industry-aware DCF on every holding of a saved portfolio and see which positions trade above or below intrinsic value.</p>
+    </div>
+</div>
+
+{% if not portfolios %}
+<div class="panel empty-state">
+    <svg class="art" viewBox="0 0 120 70" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="10" y="14" width="100" height="48" rx="6" opacity=".35"/><path d="M22 50 40 36l12 8 18-18 16 10 14-12" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <h3>No saved portfolios yet</h3>
+    <p>Create a portfolio on the Portfolio page (enter tickers and weights, then “Save as new”). It will appear here ready to value.</p>
+    <p><a class="btn" href="{% url 'home' %}" data-transition style="margin-top:10px;">Create a portfolio</a></p>
+</div>
+{% else %}
+
+<section class="panel">
+    {% csrf_token %}
+    <div class="pick-bar">
+        <form method="get" class="field" style="margin:0">
+            <label for="portfolio_id">Portfolio</label>
+            <select name="portfolio_id" id="portfolio_id" onchange="this.form.submit()">
+                {% for p in portfolios %}
+                <option value="{{ p.id }}" {% if selected_portfolio.id == p.id %}selected{% endif %}>{{ p.name }}</option>
+                {% endfor %}
+            </select>
+        </form>
+        <button type="button" class="btn" id="value-missing">
+            Value unvalued holdings
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+        <button type="button" class="btn btn-ghost" id="refresh-all">Refresh all</button>
+    </div>
+    <div class="run-status" id="run-status"><span class="hint">Valuations you run are saved, so they're here next time. Each stock takes roughly 5–20 seconds.</span></div>
+</section>
+
+<div class="kpis">
+    <div class="kpi hero">
+        <div class="kpi-label">Weighted upside</div>
+        <div class="kpi-value" id="k-upside">—</div>
+        <div class="kpi-sub" id="k-upside-sub">Across valued holdings</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-label">Coverage</div>
+        <div class="kpi-value" id="k-coverage">—</div>
+        <div class="bar meter" style="margin-top:12px"><span id="k-coverage-bar" style="--w:0%; width: var(--w)"></span></div>
+        <div class="kpi-sub" id="k-coverage-sub"></div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-label">Undervalued</div>
+        <div class="kpi-value up" id="k-under">—</div>
+        <div class="kpi-sub">Intrinsic value &gt;10% above price</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-label">Overvalued</div>
+        <div class="kpi-value down" id="k-over">—</div>
+        <div class="kpi-sub">Intrinsic value &gt;10% below price</div>
+    </div>
+</div>
+
+<section class="panel">
+    <div class="panel-head">
+        <div><h3>{{ selected_portfolio.name }}</h3><div class="sub">{{ rows|length }} holding{{ rows|length|pluralize }} · model-default assumptions unless marked “custom”</div></div>
+        <a class="link-btn" href="{% url 'home' %}?portfolio_id={{ selected_portfolio.id }}" data-transition>Edit holdings →</a>
+    </div>
+    <div class="table-wrap">
+        <table class="data val">
+            <thead><tr><th>Stock</th><th>Weight</th><th>Price</th><th>Intrinsic value</th><th>Upside</th><th>Verdict</th><th></th></tr></thead>
+            <tbody id="val-body"></tbody>
+        </table>
+    </div>
+    <p class="hint" style="margin:14px 0 0;">Weighted upside = Σ weight × upside over valued holdings, re-weighted to 100%. Open a stock's DCF to edit its assumptions; the edited result is saved here as “custom”.</p>
+</section>
+{{ rows|json_script:"val-rows" }}
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const dataEl = document.getElementById("val-rows");
+        if (!dataEl) return;
+        const rows = JSON.parse(dataEl.textContent);
+        const body = document.getElementById("val-body");
+        const csrf = document.querySelector("[name=csrfmiddlewaretoken]").value;
+        const API = "{% url 'dcf_value_api' %}";
+        const DCF = "{% url 'dcf' %}";
+        const statusEl = document.getElementById("run-status");
+        const btnMissing = document.getElementById("value-missing");
+        const btnAll = document.getElementById("refresh-all");
+        let running = false;
+
+        const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+        const money = (v, ccy) => v == null ? "—" : `<span class="hint">${esc(ccy)}</span> ${Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const pct = v => (v >= 0 ? "+" : "") + (v * 100).toFixed(1) + "%";
+        function ago(iso) {
+            const s = (Date.now() - new Date(iso).getTime()) / 1000;
+            if (s < 90) return "just now";
+            if (s < 3600) return Math.round(s / 60) + " min ago";
+            if (s < 86400) return Math.round(s / 3600) + " h ago";
+            return Math.round(s / 86400) + " d ago";
+        }
+
+        function renderRow(r) {
+            const v = r.valuation;
+            let tr = body.querySelector(`tr[data-symbol="${CSS.escape(r.symbol)}"]`);
+            if (!tr) { tr = document.createElement("tr"); tr.dataset.symbol = r.symbol; body.appendChild(tr); }
+            tr.classList.toggle("busy", !!r.busy);
+            const w = (r.weight * 100).toFixed(1);
+            const dcfHref = `${DCF}?ticker=${encodeURIComponent(r.symbol)}&run=1`;
+            let cells;
+            if (r.busy) {
+                cells = `<td colspan="4" style="text-align:right"><span class="row-spin"></span> <span class="hint">Valuing ${esc(r.symbol)}…</span></td>`;
+            } else if (r.error) {
+                cells = `<td colspan="4" style="text-align:right"><span class="err">${esc(r.error)}</span></td>`;
+            } else if (!v) {
+                cells = `<td>—</td><td>—</td><td><span class="hint">Not valued yet</span></td><td></td>`;
+            } else {
+                const up = v.upside;
+                let bar = "", cls = "";
+                if (up != null) {
+                    const width = Math.min(Math.abs(up), 1) * 50;
+                    cls = up >= 0 ? "pos" : "neg";
+                    bar = `<div class="diverge"><span class="${cls}" data-left="${up >= 0 ? 50 : 50 - width}" data-width="${width}"></span></div>`;
+                }
+                const verdictCls = v.verdict === "Undervalued" ? "up" : v.verdict === "Overvalued" ? "down" : "neutral";
+                cells = `<td>${money(v.current_price, v.currency)}</td>
+                    <td><b>${money(v.per_share_value, v.currency)}</b></td>
+                    <td><div class="up-cell">${bar}<b class="${up == null ? "" : up >= 0 ? "up" : "down"}">${up == null ? "—" : pct(up)}</b></div></td>
+                    <td>${v.verdict ? `<span class="tag ${verdictCls}">${esc(v.verdict)}</span>` : ""}
+                        ${v.custom ? ' <span class="tag custom">custom</span>' : ""}<span class="hint" style="display:block;margin-top:3px">${ago(v.updated_at)}</span></td>`;
+            }
+            tr.innerHTML = `<td class="sym-cell">${esc(r.symbol)}${v && v.name ? `<span class="hint">${esc(v.name)}</span>` : ""}</td>
+                <td><div class="wcell"><div class="bar"><span style="--w:${w}%;width:${w}%"></span></div>${w}%</div></td>
+                ${cells}
+                <td><div class="actions-cell">
+                    <button type="button" class="mini-btn" data-act="value" ${running || r.busy ? "disabled" : ""}>${v ? "Refresh" : "Value"}</button>
+                    <a class="dcf-link" href="${dcfHref}">DCF →</a>
+                </div></td>`;
+            // animate the diverging bar in
+            const span = tr.querySelector(".diverge span");
+            if (span) requestAnimationFrame(() => requestAnimationFrame(() => {
+                span.style.left = span.dataset.left + "%"; span.style.width = span.dataset.width + "%";
+            }));
+        }
+
+        function renderSummary() {
+            const valued = rows.filter(r => r.valuation && r.valuation.upside != null);
+            const wSum = valued.reduce((a, r) => a + r.weight, 0);
+            const set = (id, html) => { document.getElementById(id).innerHTML = html; };
+            if (wSum > 0) {
+                const up = valued.reduce((a, r) => a + r.weight * r.valuation.upside, 0) / wSum;
+                set("k-upside", `<span class="${up >= 0 ? "up" : "down"}">${pct(up)}</span>`);
+                set("k-upside-sub", up >= 0 ? "Holdings trade below intrinsic value on average" : "Holdings trade above intrinsic value on average");
+            } else {
+                set("k-upside", "—");
+                set("k-upside-sub", "Value some holdings to see this");
+            }
+            const coverage = rows.filter(r => r.valuation).reduce((a, r) => a + r.weight, 0);
+            set("k-coverage", `${rows.filter(r => r.valuation).length}<small style="margin-left:4px">/ ${rows.length}</small>`);
+            set("k-coverage-sub", `${(coverage * 100).toFixed(0)}% of portfolio weight valued`);
+            const bar = document.getElementById("k-coverage-bar");
+            bar.style.setProperty("--w", (coverage * 100) + "%");
+            set("k-under", valued.filter(r => r.valuation.upside > 0.10).length);
+            set("k-over", valued.filter(r => r.valuation.upside < -0.10).length);
+        }
+
+        function renderAll() { rows.forEach(renderRow); renderSummary(); }
+
+        async function valueOne(r) {
+            r.busy = true; r.error = null; renderRow(r);
+            try {
+                const fd = new FormData();
+                fd.append("ticker", r.symbol);
+                const resp = await fetch(API, { method: "POST", body: fd, headers: { "X-CSRFToken": csrf }, credentials: "same-origin" });
+                if (resp.redirected || resp.status === 403) throw new Error("Your session expired. Reload the page and log in again.");
+                const data = await resp.json();
+                if (data.ok) r.valuation = data.valuation; else r.error = data.error || "Valuation failed.";
+            } catch (e) {
+                r.error = e.message || "Network error.";
+            }
+            r.busy = false; renderRow(r);
+            const tr = body.querySelector(`tr[data-symbol="${CSS.escape(r.symbol)}"]`);
+            if (tr) { tr.classList.remove("flash"); void tr.offsetWidth; tr.classList.add("flash"); }
+            renderSummary();
+        }
+
+        async function runQueue(queue) {
+            if (running || !queue.length) {
+                if (!queue.length) statusEl.innerHTML = '<span class="hint">Every holding already has a saved valuation. Use “Refresh all” to re-run them.</span>';
+                return;
+            }
+            running = true;
+            btnMissing.disabled = btnAll.disabled = true;
+            rows.forEach(renderRow);
+            for (let i = 0; i < queue.length; i++) {
+                statusEl.innerHTML = `<span>Valuing <b>${esc(queue[i].symbol)}</b> · ${i + 1} of ${queue.length}</span><div class="progress"><span style="--p:${(i / queue.length) * 100}%"></span></div>`;
+                await valueOne(queue[i]);
+            }
+            const failed = queue.filter(r => r.error).length;
+            statusEl.innerHTML = `<span class="${failed ? "warn-text" : "up"}">Done · ${queue.length - failed} valued${failed ? `, ${failed} could not be valued` : ""}.</span>`;
+            running = false;
+            btnMissing.disabled = btnAll.disabled = false;
+            rows.forEach(renderRow);
+        }
+
+        btnMissing.addEventListener("click", () => runQueue(rows.filter(r => !r.valuation)));
+        btnAll.addEventListener("click", () => runQueue(rows.slice()));
+        body.addEventListener("click", e => {
+            const btn = e.target.closest('[data-act="value"]');
+            if (!btn || running) return;
+            const r = rows.find(x => x.symbol === btn.closest("tr").dataset.symbol);
+            if (r) runQueue([r]);
+        });
+
+        renderAll();
+    });
+</script>
+{% endblock %}

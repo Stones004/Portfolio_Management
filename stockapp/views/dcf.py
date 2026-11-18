@@ -9,6 +9,8 @@ from analytics.dcf import DCF_Valuation, DCFError
 from analytics.industry import profile_choices
 from analytics.market_data import DataError
 
+from ..models import Holding, Valuation
+
 logger = logging.getLogger(__name__)
 
 # (assumption key, is_percent) - same keys are used as form field names
@@ -146,7 +148,16 @@ def _present(res):
         upside_text = f"Intrinsic value is {upside:.1%} above price"
     else:
         upside_text = f"Intrinsic value is {-upside:.1%} below price"
+    # Price-vs-value gauge positions (0-100% along a track that ends 20% past the larger value).
+    gauge = None
+    value = res["per_share_value"]
+    if price and price > 0 and value is not None and value > 0:
+        hi = max(price, value) * 1.2
+        gauge = {"price_pct": round(price / hi * 100, 1), "value_pct": round(value / hi * 100, 1),
+                 "lo_pct": round(min(price, value) / hi * 100, 1),
+                 "span_pct": round(abs(value - price) / hi * 100, 1)}
     return {
+        "gauge": gauge,
         "upside_text": upside_text,
         "verdict": verdict,
         "verdict_class": verdict_class,
@@ -179,13 +190,33 @@ def _present(res):
     }
 
 
+def save_valuation(user, ticker, res, custom=False):
+    """Store the latest DCF result for this user + ticker (overwrites the previous one)."""
+    valuation, _ = Valuation.objects.update_or_create(
+        user=user, symbol=ticker,
+        defaults={"name": (res.get("name") or "")[:200], "currency": (res.get("currency") or "")[:10],
+                  "model": res.get("model") or "", "per_share_value": float(res["per_share_value"]),
+                  "current_price": res.get("current_price") or None, "upside": res.get("upside"),
+                  "custom": custom})
+    return valuation
+
+
+def portfolio_symbols(user):
+    """Distinct tickers across the user's saved portfolios, for one-click valuation."""
+    return list(Holding.objects.filter(portfolio__user=user)
+                .values_list("symbol", flat=True).distinct().order_by("symbol")[:40])
+
+
 @login_required
 def dcf_view(request):
     ctx = {"ticker": "", "industry_choices": profile_choices(), "industry": "",
            "detected_industry": "", "result": None, "error": None, "show_inputs": False,
-           "fields": []}
+           "fields": [], "portfolio_symbols": portfolio_symbols(request.user), "autorun": False}
 
     if request.method != "POST":
+        # /dcf/?ticker=INFY.NS prefills the search; &run=1 submits it on load (shows the loader).
+        ticker = (request.GET.get("ticker") or "").strip().upper()[:30]
+        ctx.update(ticker=ticker, autorun=bool(ticker) and request.GET.get("run") == "1")
         return render(request, "stockapp/dcf.html", ctx)
 
     ticker = (request.POST.get("ticker") or "").strip().upper()
@@ -217,6 +248,7 @@ def dcf_view(request):
             overrides = {k: v for k, v in _from_form(request.POST).items()
                          if k not in original_dec or not math.isclose(v, original_dec[k], abs_tol=1e-9)}
         res = model.run(overrides)
+        save_valuation(request.user, ticker, res, custom=bool(overrides))
 
         labels = DCF_LABELS[res["model"]]
         original = _to_form(res["defaults"])
