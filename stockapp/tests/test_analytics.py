@@ -3,11 +3,13 @@ import math
 from unittest import mock
 
 import numpy as np
+import pandas as pd
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase
 
 from analytics import dcf
 from analytics.frontier import simulate_frontier, weight_changes
+from analytics import market_data
 from analytics.industry import classify
 from analytics.portfolio import align_weights, portfolio_metrics
 from stockapp.holdings import parse_csv_fields, read_holdings_file
@@ -96,6 +98,118 @@ class DCFEngineTests(SimpleTestCase):
             m.run({"terminal_growth": 0.5})
         with self.assertRaises(dcf.DCFError):
             m.run({"high_growth_years": 0, "fade_years": 0})
+
+
+class CurrencyAndUnitsTests(SimpleTestCase):
+    """Regression: INFY.NS reports in USD but trades in INR. When Yahoo's profile endpoint was
+    rate-limited the statements were assumed to be INR and the value came out ~90x too small."""
+
+    def _run(self, company):
+        with mock.patch("analytics.dcf.get_company_data", return_value=company), \
+                mock.patch("analytics.wacc.get_company_data", return_value=company):
+            return dcf.DCF_Valuation(company.ticker).run()
+
+    def test_usd_statements_are_converted_to_price_currency(self):
+        inr = self._run(make_company())
+        usd = self._run(make_company(reporting="USD", fx=90.0, statement_divisor=90.0))
+        self.assertAlmostEqual(usd["per_share_value"], inr["per_share_value"], delta=0.01)
+        self.assertEqual(usd["currency"], "INR")
+        self.assertTrue(any("converted to INR" in w for w in usd["warnings"]))
+
+    def test_unverified_currency_that_looks_wrong_raises(self):
+        company = make_company(statement_divisor=90.0, reporting_assumed=True)
+        with self.assertRaises(dcf.DCFError) as ctx:
+            self._run(company)
+        self.assertIn("currency", str(ctx.exception))
+
+    def test_unverified_currency_that_looks_right_still_values(self):
+        res = self._run(make_company(reporting_assumed=True))
+        self.assertGreater(res["per_share_value"], 0)
+
+    def test_extreme_value_vs_price_is_flagged(self):
+        company = make_company()
+        company.info["currentPrice"] = 200_000.0
+        res = self._run(company)
+        self.assertTrue(any("x the market price" in w for w in res["warnings"]))
+
+
+class AnalystGrowthTests(SimpleTestCase):
+    """Regression: Yahoo's revenue_estimate "growth" for RELIANCE.NS used a wrong year-ago base
+    (+151%); growth is now computed from the consensus level vs reported revenue."""
+
+    @staticmethod
+    def _est(avg_0y, avg_1y, ccy="INR"):
+        return pd.DataFrame({"avg": [avg_0y, avg_1y], "growth": [1.5, 0.8], "currency": [ccy, ccy]},
+                            index=["0y", "+1y"])
+
+    def test_uses_levels_not_yahoo_growth_column(self):
+        c = make_company()                      # latest revenue 1,300e8
+        g = c.growth_from_estimates(self._est(1_400e8, 1_573e8), "revenue")
+        self.assertAlmostEqual(g, (1_573 / 1_300) ** 0.5 - 1, places=4)
+
+    def test_converts_statement_currency(self):
+        c = make_company(reporting="USD", fx=90.0, statement_divisor=90.0)
+        g = c.growth_from_estimates(self._est(1_400e8, 1_573e8, ccy="INR"), "revenue")
+        self.assertAlmostEqual(g, (1_573 / 1_300) ** 0.5 - 1, places=4)
+
+    def test_inconsistent_estimates_are_ignored(self):
+        c = make_company()
+        self.assertIsNone(c.growth_from_estimates(self._est(9_000e8, 12_000e8), "revenue"))
+        self.assertIsNone(c.growth_from_estimates(pd.DataFrame(), "revenue"))
+
+    def test_eps_growth(self):
+        c = make_company()
+        c.income.loc["Net Income"] = [150e8, 130e8, 115e8, 100e8]   # EPS 15 on 1bn shares
+        g = c.growth_from_estimates(self._est(16.0, 18.15), "earnings")
+        self.assertAlmostEqual(g, (18.15 / 15.0) ** 0.5 - 1, places=4)
+
+
+TIMESERIES_USD = ('{"timeseries": {"result": [{"meta": {}, "timestamp": [1], "annualTotalRevenue": '
+                  '[{"asOfDate": "2025-03-31", "currencyCode": "USD", "reportedValue": {"raw": 1.0}}]}]}}')
+
+
+class _FakeTicker:
+    """Minimal yfinance.Ticker for a USD-reporting stock trading in INR, with "info" blocked."""
+    def __init__(self, symbol):
+        self.ticker = symbol
+        company = make_company(reporting="USD", fx=90.0, statement_divisor=90.0)
+        self.income_stmt, self.balance_sheet, self.cashflow = company.income, company.balance, company.cashflow
+        self._data = mock.Mock()
+        self._data.cache_get.return_value = mock.Mock(text=TIMESERIES_USD)
+
+    @property
+    def info(self):
+        raise RuntimeError("401 Invalid Crumb")
+
+    def get_history_metadata(self):
+        return {"currency": "INR", "longName": "Fake Infosys", "regularMarketPrice": 1500.0}
+
+
+class CompanyDataFallbackTests(SimpleTestCase):
+    def test_blocked_profile_uses_timeseries_currency_and_search_sector(self):
+        search = mock.Mock(quotes=[{"symbol": "FAKE.NS", "sector": "Technology",
+                                    "industry": "Information Technology Services", "longname": "Fake"}])
+        with mock.patch.object(market_data.yf, "Ticker", _FakeTicker), \
+                mock.patch.object(market_data.yf, "Search", return_value=search), \
+                mock.patch.object(market_data, "fx_rate", return_value=90.0) as fx:
+            data = market_data.CompanyData("FAKE.NS")
+        self.assertEqual(data.reporting_currency, "USD")
+        self.assertFalse(data.reporting_currency_assumed)
+        fx.assert_called_with("USD", "INR")
+        self.assertEqual(data.fx, 90.0)
+        self.assertEqual(data.sector, "Technology")
+        self.assertEqual(classify(data.sector, data.industry), "technology")
+
+    def test_unknown_currency_is_flagged(self):
+        class NoCurrency(_FakeTicker):
+            def __init__(self, symbol):
+                super().__init__(symbol)
+                self._data.cache_get.side_effect = RuntimeError("429")
+        with mock.patch.object(market_data.yf, "Ticker", NoCurrency), \
+                mock.patch.object(market_data.yf, "Search", side_effect=RuntimeError("429")):
+            data = market_data.CompanyData("FAKE.NS")
+        self.assertTrue(data.reporting_currency_assumed)
+        self.assertEqual(data.reporting_currency, "INR")
 
 
 class PortfolioTests(SimpleTestCase):

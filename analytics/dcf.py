@@ -45,6 +45,7 @@ FADE_YEARS = 5
 GROWTH_WEIGHTS = {"fundamental": 0.4, "historical": 0.3, "analyst": 0.3}
 GROWTH_ESTIMATE_BOUNDS = (-0.20, 0.60)   # each estimate is clipped before blending
 BLENDED_GROWTH_BOUNDS = (-0.05, 0.40)
+MAX_PLAUSIBLE_PRICE_TO_SALES = 60   # above this, unverified statement currency is treated as wrong
 
 ASSUMPTION_KEYS = ("discount_rate", "growth_rate", "reinvestment_rate", "terminal_growth",
                    "terminal_return", "high_growth_years", "fade_years")
@@ -415,6 +416,27 @@ class DCF_Valuation:
         table = pd.DataFrame(rows)
         return table, tv, pv_tv, table["PV"].sum()
 
+    def _check_units(self, per_share, price, shares):
+        """Catch currency/unit mix-ups instead of returning a value that is off by ~100x."""
+        d = self.data
+        if not price or price <= 0:
+            return
+        if getattr(d, "reporting_currency_assumed", False):
+            # Statements in an unknown currency: if the market values the company at an absurd
+            # multiple of its reported sales, the statements are almost surely in another currency.
+            revenue = d.value("income", ["Total Revenue", "Operating Revenue"])
+            if revenue and revenue > 0 and price * shares / revenue > MAX_PLAUSIBLE_PRICE_TO_SALES:
+                raise DCFError(
+                    f"Could not confirm which currency {self.ticker}'s financial statements are "
+                    f"reported in (Yahoo Finance did not say), and they look inconsistent with a "
+                    f"{d.price_currency} share price. Try again in a minute; Yahoo may be rate-limiting.")
+        ratio = per_share / price
+        if ratio < 0.05 or ratio > 20:
+            self.warnings.append(
+                f"Intrinsic value is {ratio:.2f}x the market price. A gap this large usually means "
+                "unusual inputs (one-off earnings, very low or negative cash flow) - review the "
+                "assumptions and historical table before relying on it.")
+
     def run(self, assumptions=None):
         """Value the company. `assumptions` overrides any default (decimals)."""
         defaults = self.default_assumptions()
@@ -464,6 +486,7 @@ class DCF_Valuation:
 
         per_share = equity / shares
         price = d.current_price
+        self._check_units(per_share, price, shares)
         if d.reporting_currency != d.price_currency:
             self.warnings.append(
                 f"Statements reported in {d.reporting_currency}; converted to "
