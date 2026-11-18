@@ -20,13 +20,21 @@ def _frame(rows):
 
 
 def make_company(ticker="TEST.NS", sector="Technology", industry="Information Technology Services",
-                 analyst=0.08, financial=False):
-    """A CompanyData built from hand-made statements (values in INR)."""
+                 analyst=0.08, financial=False, reporting="INR", fx=1.0, statement_divisor=1.0,
+                 reporting_assumed=False):
+    """A CompanyData built from hand-made statements (values in INR).
+
+    To mimic a company that reports in another currency (INFY.NS reports in USD, trades in INR),
+    divide the statements by `statement_divisor` and set `reporting` / `fx`. `reporting_assumed`
+    mimics Yahoo not saying which currency the statements are in.
+    """
     c = CompanyData.__new__(CompanyData)
     c.ticker = ticker
+    c.warnings = []
     c.info = {"sharesOutstanding": 1_000_000_000, "marketCap": 2_000_000_000_000,
-              "currentPrice": 2000.0, "currency": "INR", "financialCurrency": "INR"}
-    c.price_currency, c.minor_units, c.reporting_currency, c.fx = "INR", 1.0, "INR", 1.0
+              "currentPrice": 2000.0, "currency": "INR", "financialCurrency": reporting}
+    c.price_currency, c.minor_units, c.reporting_currency, c.fx = "INR", 1.0, reporting, fx
+    c.reporting_currency_assumed = reporting_assumed
     c.sector, c.industry, c.country, c.name = sector, industry, "India", "Test Co"
 
     revenue = [1_300e8, 1_150e8, 1_000e8, 900e8]
@@ -51,6 +59,9 @@ def make_company(ticker="TEST.NS", sector="Technology", industry="Information Te
         c.cashflow = _frame({"Capital Expenditure": [-60e8, -55e8, -50e8, -45e8],
                              "Depreciation And Amortization": [35e8, 32e8, 30e8, 28e8],
                              "Change In Working Capital": [-8e8, -7e8, -6e8, -5e8]})
+    if statement_divisor != 1.0:
+        for name in ("income", "balance", "cashflow"):
+            setattr(c, name, getattr(c, name) / statement_divisor)
     for kind in ("revenue", "earnings"):
         setattr(c, f"_analyst_{kind}", analyst)
     return c

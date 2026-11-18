@@ -5,6 +5,7 @@ Everything that talks to the network lives here so the rest of the analytics
 package is plain maths and easy to test. Results are cached in-process for an
 hour, so a "Re-run" or a second page view does not hit Yahoo again.
 """
+import json
 import math
 import threading
 import time
@@ -14,6 +15,7 @@ import pandas as pd
 import yfinance as yf
 
 CACHE_TTL_SECONDS = 60 * 60  # 1 hour
+DEGRADED_CACHE_TTL_SECONDS = 60
 
 _cache = {}
 _lock = threading.Lock()
@@ -23,15 +25,17 @@ class DataError(Exception):
     """Raised when required market / statement data is unavailable."""
 
 
-def _cached(key, loader):
+def _cached(key, loader, ttl=None):
+    """Cache loader() for CACHE_TTL_SECONDS. `ttl(value)` may return a shorter lifetime."""
     now = time.time()
     with _lock:
         hit = _cache.get(key)
-        if hit and now - hit[0] < CACHE_TTL_SECONDS:
+        if hit and now < hit[0]:
             return hit[1]
     value = loader()
+    seconds = ttl(value) if ttl else CACHE_TTL_SECONDS
     with _lock:
-        _cache[key] = (now, value)
+        _cache[key] = (now + seconds, value)
     return value
 
 
@@ -150,9 +154,17 @@ class CompanyData:
             self.info = {}
         if not self.info.get("sector") and not self.info.get("marketCap"):
             self.info.update(self._chart_metadata(t))
-            self.warnings.append(
-                "Yahoo company profile was unavailable (rate-limited), so sector, country and "
-                "currency were inferred from the ticker. Pick the industry model manually if needed.")
+            # Sector/industry/name from the search endpoint, which is rarely blocked.
+            for key, value in self._search_profile(self.ticker).items():
+                self.info.setdefault(key, value)
+            if self.info.get("sector"):
+                self.warnings.append(
+                    "Yahoo company profile was unavailable (rate-limited); sector and industry came "
+                    "from Yahoo search and the country was inferred from the ticker.")
+            else:
+                self.warnings.append(
+                    "Yahoo company profile was unavailable (rate-limited), so sector and country were "
+                    "inferred from the ticker. Pick the industry model manually if needed.")
 
         # Throttled requests come back as empty tables rather than errors: retry once.
         for attempt in range(2):
@@ -180,8 +192,13 @@ class CompanyData:
         suffix_ccy, suffix_country = self._suffix_defaults(self.ticker)
         quote_ccy = self.info.get("currency") or suffix_ccy
         self.price_currency, self.minor_units = split_currency(quote_ccy)
-        if self.info.get("financialCurrency"):
-            self.reporting_currency = self.info["financialCurrency"].upper()
+        # The currency the statements are reported in often differs from the trading currency
+        # (INFY.NS reports in USD, trades in INR). Getting this wrong scales every value by the
+        # FX rate (~90x for USD/INR), so try two independent sources before assuming.
+        reporting = self.info.get("financialCurrency") or self._statement_currency(t)
+        self.reporting_currency_assumed = not reporting
+        if reporting:
+            self.reporting_currency = split_currency(reporting)[0]
         else:
             self.reporting_currency = self.price_currency
             self.warnings.append(
@@ -217,6 +234,42 @@ class CompanyData:
         if meta.get("regularMarketPrice"):
             out["currentPrice"] = meta["regularMarketPrice"]
         return out
+
+    @staticmethod
+    def _search_profile(ticker):
+        """Sector / industry / name from Yahoo's search endpoint (works when "info" is blocked)."""
+        try:
+            quotes = yf.Search(ticker, max_results=5, news_count=0).quotes or []
+        except Exception:
+            return {}
+        match = next((q for q in quotes if (q.get("symbol") or "").upper() == ticker), None)
+        if not match:
+            return {}
+        out = {"sector": match.get("sector") or match.get("sectorDisp"),
+               "industry": match.get("industry") or match.get("industryDisp"),
+               "longName": match.get("longname") or match.get("shortname")}
+        return {k: v for k, v in out.items() if v}
+
+    @staticmethod
+    def _statement_currency(t):
+        """Reporting currency from the fundamentals-timeseries endpoint (the one the statements
+        come from), via yfinance's own session so crumbs and rate-limit handling are shared."""
+        symbol = t.ticker
+        url = (f"https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/"
+               f"{symbol}?symbol={symbol}&type=annualTotalRevenue,annualNetIncome"
+               f"&period1=1483142400&period2={int(time.time())}")
+        try:
+            payload = json.loads(t._data.cache_get(url=url).text)
+            for series in (payload.get("timeseries") or {}).get("result") or []:
+                for key, points in series.items():
+                    if key in ("meta", "timestamp"):
+                        continue
+                    for point in points or []:
+                        if point and point.get("currencyCode"):
+                            return point["currencyCode"]
+        except Exception:
+            pass
+        return None
 
     @staticmethod
     def _clean(df):
@@ -271,8 +324,10 @@ class CompanyData:
     def analyst_growth(self, kind="revenue"):
         """Consensus growth estimate (decimal) or None.
 
-        Uses the analysts' long-term growth (LTG) when published, otherwise the
-        average of this-year and next-year revenue (or EPS) growth estimates.
+        Uses the analysts' long-term growth (LTG) when published. Otherwise growth is computed
+        from the consensus *level* (revenue, or EPS, for the next fiscal years) against the
+        company's latest reported figure. Yahoo's own "growth" column is not used: its year-ago
+        base is sometimes wrong (RELIANCE.NS revenue at half the reported value gave +150%).
         """
         cache_attr = f"_analyst_{kind}"
         if hasattr(self, cache_attr):
@@ -281,26 +336,57 @@ class CompanyData:
         value = None
         try:
             t = yf.Ticker(self.ticker)
-            ltg = None
             try:
                 ge = t.growth_estimates
-                if ge is not None and "LTG" in ge.index and "stockTrend" in ge.columns:
-                    ltg = ge.loc["LTG", "stockTrend"]
+                ltg = ge.loc["LTG", "stockTrend"] if ge is not None and "LTG" in ge.index else None
             except Exception:
-                pass
-            if ltg is not None and not pd.isna(ltg):
+                ltg = None
+            if ltg is not None and not pd.isna(ltg) and -0.2 <= float(ltg) <= 0.5:
                 value = float(ltg)
             else:
                 est = t.revenue_estimate if kind == "revenue" else t.earnings_estimate
-                if est is not None and "growth" in est.columns:
-                    g = pd.to_numeric(est["growth"].reindex(["0y", "+1y"]), errors="coerce").dropna()
-                    if not g.empty:
-                        value = float(g.mean())
+                value = self.growth_from_estimates(est, kind)
         except Exception:
             value = None  # analyst data is optional; never fail a valuation over it
 
         setattr(self, cache_attr, value)
         return value
+
+    def growth_from_estimates(self, est, kind):
+        """Annualised growth from the latest reported value to the consensus for +1y (or 0y).
+
+        `est` is yfinance's revenue_estimate / earnings_estimate table ("avg" per period, plus an
+        optional "currency" column). Returns None when the numbers don't line up.
+        """
+        if est is None or getattr(est, "empty", True) or "avg" not in est.columns:
+            return None
+        if kind == "revenue":
+            actual = self.value("income", ["Total Revenue", "Operating Revenue"])
+        else:
+            ni = self.value("income", ["Net Income Common Stockholders", "Net Income"])
+            try:
+                actual = ni / self.shares_outstanding if ni is not None else None
+            except DataError:
+                actual = None
+        if actual is None or actual <= 0:
+            return None
+        fx = 1.0
+        if "currency" in est.columns:
+            est_ccy = est["currency"].dropna()
+            if not est_ccy.empty:
+                major, units = split_currency(str(est_ccy.iloc[0]))
+                fx = fx_rate(major, self.price_currency) / units
+        avg = pd.to_numeric(est["avg"], errors="coerce") * fx
+        # "0y" is the current (unreported) fiscal year, "+1y" the one after.
+        for period, years in (("+1y", 2), ("0y", 1)):
+            level = avg.get(period)
+            if level is None or pd.isna(level) or level <= 0:
+                continue
+            annual = (float(level) / actual) ** (1 / years)
+            if not 0.5 <= annual <= 1.6:
+                return None   # estimate and reported figures don't line up; trust neither
+            return annual - 1
+        return None
 
     @property
     def years(self):
@@ -336,4 +422,9 @@ def get_company_data(ticker):
     ticker = (ticker or "").strip().upper()
     if not ticker:
         raise DataError("Please enter a ticker symbol.")
-    return _cached(("company", ticker), lambda: CompanyData(ticker))
+    # Data gathered while Yahoo was rate-limiting (no profile / unknown reporting currency) is
+    # only kept briefly, so a retry a minute later gets a fresh, complete fetch.
+    def ttl(data):
+        degraded = data.reporting_currency_assumed or not data.sector
+        return DEGRADED_CACHE_TTL_SECONDS if degraded else CACHE_TTL_SECONDS
+    return _cached(("company", ticker), lambda: CompanyData(ticker), ttl=ttl)

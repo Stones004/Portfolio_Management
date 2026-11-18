@@ -11,6 +11,7 @@ Production (Render) variables:
     DATABASE_URL        Neon connection string, e.g.
                         postgresql://user:pass@ep-xxx-pooler.region.aws.neon.tech/db?sslmode=require
     ALLOWED_HOSTS       optional extra hostnames, comma separated
+    SQLITE_PATH         optional; SQLite file on a persistent disk if not using DATABASE_URL
 """
 import os
 from pathlib import Path
@@ -98,13 +99,21 @@ TEMPLATES = [
 # ---------------------------------------------------------------------------
 # Database: DATABASE_URL (Neon Postgres) if set, otherwise local SQLite
 # ---------------------------------------------------------------------------
+# SQLITE_PATH lets SQLite live on a mounted persistent disk (e.g. a Render disk at /var/data).
+# Without DATABASE_URL or a persistent SQLITE_PATH, a container's database is wiped on every
+# deploy/restart - users and portfolios disappear. stockapp/checks.py warns about this at startup.
+SQLITE_PATH = os.environ.get("SQLITE_PATH") or str(BASE_DIR / "db.sqlite3")
 DATABASES = {
     "default": dj_database_url.config(
-        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+        default=f"sqlite:///{SQLITE_PATH}",
         conn_max_age=int(os.environ.get("DB_CONN_MAX_AGE", "60")),
         conn_health_checks=True,   # Neon suspends idle databases; re-check stale connections
     )
 }
+# Neon's pooled endpoint ("-pooler" in the host) is PgBouncer in transaction mode, which
+# breaks Postgres server-side cursors (used by queryset.iterator()). Turn them off there.
+if "-pooler" in os.environ.get("DATABASE_URL", ""):
+    DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
 
 
 # ---------------------------------------------------------------------------

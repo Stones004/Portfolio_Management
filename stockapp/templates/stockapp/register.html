@@ -2,24 +2,17 @@
 
 {% block title %}Create account{% endblock %}
 
-{% block extra_css %}
-<style>
-    .auth { max-width: 420px; margin: 40px auto 0; }
-    .auth form p { display: flex; flex-direction: column; gap: 6px; margin: 0 0 12px; }
-    .auth input { width: 100%; padding: 11px 12px; font-size: 15px; border-radius: 9px; border: 1px solid rgba(0, 255, 204, 0.3); background: rgba(10, 10, 10, 0.92); color: #fff; font-family: inherit; }
-    .auth label { color: var(--muted); font-size: 13px; }
-    .auth .helptext, .auth ul:not(.errorlist) { color: var(--muted); font-size: 12px; }
-</style>
-{% endblock %}
-
-{% block content %}
-<div class="panel auth">
-    <h1>Create account</h1>
-    <form method="post">
-        {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit" class="btn">Register</button>
-    </form>
-    <p class="hint" style="margin-top:14px;">Already have an account? <a href="{% url 'login' %}">Log in</a></p>
-</div>
+{% block auth_content %}
+<div class="eyebrow">Open a workspace</div>
+<h2>Create your account</h2>
+<p class="lede">Save portfolios and pick up your analysis where you left off.</p>
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit" class="btn btn-block">
+        Create account
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+    </button>
+</form>
+<p class="switch">Already have an account? <a href="{% url 'login' %}">Log in</a></p>
 {% endblock %}
