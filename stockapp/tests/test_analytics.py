@@ -212,6 +212,61 @@ class CompanyDataFallbackTests(SimpleTestCase):
         self.assertEqual(data.reporting_currency, "INR")
 
 
+class _ProfileOnlyBlocked(_FakeTicker):
+    """'info' works but comes back without profile fields (seen when Yahoo throttles)."""
+    @property
+    def info(self):
+        return {"marketCap": 6e12, "currency": "INR", "financialCurrency": "USD"}
+
+
+class IndustryDetectionTests(SimpleTestCase):
+    def test_yahoo_spellings(self):
+        cases = [
+            ("Financial Services", "Banks - Regional", "financial"),
+            ("Financial Services", "Banks—Regional", "financial"),         # search endpoint
+            ("financial-services", "banks-regional", "financial"),              # sector/industry keys
+            ("Financial Services", "Insurance Brokers", "general"),
+            ("Financial Services", "Financial Data & Stock Exchanges", "general"),
+            ("Technology", "Software—Infrastructure", "technology"),
+            ("Communication Services", "Internet Content & Information", "technology"),
+            ("Consumer Cyclical", "Internet Retail", "technology"),
+            ("Technology", "Solar", "cyclical"),
+            ("Basic Materials", "Steel", "cyclical"),
+            ("Basic Materials", "Specialty Chemicals", "general"),
+            ("Energy", "Oil & Gas Refining & Marketing", "cyclical"),
+            ("Utilities", "Utilities—Regulated Electric", "utility"),
+            ("", "Utilities - Regulated Electric", "utility"),
+            ("Real Estate", "Real Estate—Development", "real_estate"),
+            ("Consumer Defensive", "Household & Personal Products", "consumer_defensive"),
+            ("Healthcare", "Drug Manufacturers—Specialty & Generic", "healthcare"),
+            ("", "", "general"),
+        ]
+        for sector, industry, expected in cases:
+            with self.subTest(sector=sector, industry=industry):
+                self.assertEqual(classify(sector, industry), expected)
+
+    def test_search_fallback_when_profile_fields_missing_and_full_symbol_finds_nothing(self):
+        empty = mock.Mock(quotes=[])
+        hit = mock.Mock(quotes=[{"symbol": "INFY", "sector": "Technology"},
+                                {"symbol": "FAKE.NS", "sector": "Financial Services",
+                                 "industry": "Banks—Regional", "longname": "Fake Bank"}])
+        with mock.patch.object(market_data.yf, "Ticker", _ProfileOnlyBlocked), \
+                mock.patch.object(market_data.yf, "Search", side_effect=[empty, hit]) as search, \
+                mock.patch.object(market_data, "fx_rate", return_value=90.0):
+            data = market_data.CompanyData("FAKE.NS")
+        self.assertEqual([c.args[0] for c in search.call_args_list], ["FAKE.NS", "FAKE"])
+        self.assertEqual(data.industry, "Banks - Regional")
+        self.assertEqual(classify(data.sector, data.industry), "financial")
+
+    def test_undetectable_profile_warns(self):
+        with mock.patch.object(market_data.yf, "Ticker", _FakeTicker), \
+                mock.patch.object(market_data.yf, "Search", return_value=mock.Mock(quotes=[])), \
+                mock.patch.object(market_data, "fx_rate", return_value=90.0):
+            data = market_data.CompanyData("FAKE.NS")
+        self.assertEqual(data.sector, "")
+        self.assertTrue(any("could not be detected" in w for w in data.warnings))
+
+
 class PortfolioTests(SimpleTestCase):
     def test_metrics(self):
         prices = fake_prices(["A", "B", "C"])

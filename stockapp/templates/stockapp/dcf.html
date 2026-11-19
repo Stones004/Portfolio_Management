@@ -94,7 +94,7 @@
         <div class="field">
             <label for="industry">
                 Industry model
-                {% if detected_industry %}<span class="hint">· auto-detected: {{ detected_industry }}</span>{% endif %}
+                {% if detected_label %}<span class="hint">· auto-detected: {{ detected_label }}</span>{% endif %}
             </label>
             <select id="industry" name="industry">
                 <option value="">Auto-detect</option>
@@ -330,8 +330,11 @@
 
         // A new ticker/industry starts fresh: don't send the old company's assumptions.
         form.addEventListener("submit", function () {
-            const fresh = tickerInput.value.trim().toUpperCase() !== startTicker
-                || industryInput.value !== startIndustry;
+            const newTicker = tickerInput.value.trim().toUpperCase() !== startTicker;
+            // A model override belongs to the company it was picked for: a new ticker is
+            // auto-detected unless the user also changed the model just now.
+            if (newTicker && industryInput.value === startIndustry) industryInput.value = "";
+            const fresh = newTicker || industryInput.value !== startIndustry;
             if (fresh) assumptionInputs().forEach(i => i.disabled = true);
         });
         window.addEventListener("pageshow", () => assumptionInputs().forEach(i => i.disabled = false));
