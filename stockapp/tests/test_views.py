@@ -148,6 +148,29 @@ class DCFViewTests(LoggedInTestCase):
             resp = self.client.post(reverse("dcf"), {"ticker": "NOPE"})
         self.assertContains(resp, "No financial statements found")
 
+    def test_detected_model_is_not_pinned_for_the_next_ticker(self):
+        """Regression: after valuing a bank, the selector came back set to 'financial', so the
+        next ticker typed in was valued as a bank instead of being auto-detected."""
+        bank = make_company(ticker="BANK.NS", sector="Financial Services",
+                            industry="Banks - Regional", financial=True)
+        steel = make_company(ticker="STEEL.NS", sector="Basic Materials", industry="Steel")
+        by_ticker = {"BANK.NS": bank, "STEEL.NS": steel}
+        with mock.patch("analytics.dcf.get_company_data", side_effect=by_ticker.get), \
+                mock.patch("analytics.wacc.get_company_data", side_effect=by_ticker.get):
+            first = self.client.post(reverse("dcf"), {"ticker": "BANK.NS", "industry": ""})
+            self.assertEqual(first.context["detected_industry"], "financial")
+            self.assertEqual(first.context["industry"], "")          # selector stays on Auto-detect
+            self.assertContains(first, "auto-detected: Financial (bank / insurer / NBFC)")
+            nxt = self.client.post(reverse("dcf"), {"ticker": "STEEL.NS",
+                                                    "industry": first.context["industry"]})
+        self.assertEqual(nxt.context["result"]["model"], "fcff")
+        self.assertEqual(nxt.context["detected_industry"], "cyclical")
+
+    def test_explicit_override_is_kept(self):
+        resp = self.client.post(reverse("dcf"), {"ticker": "TEST.NS", "industry": "cyclical"})
+        self.assertEqual(resp.context["industry"], "cyclical")
+        self.assertEqual(resp.context["detected_industry"], "technology")
+
     def test_run_saves_valuation_and_get_prefills(self):
         self.client.post(reverse("dcf"), {"ticker": "test.ns"})
         v = Valuation.objects.get(user=self.user, symbol="TEST.NS")
@@ -155,6 +178,28 @@ class DCFViewTests(LoggedInTestCase):
         resp = self.client.get(reverse("dcf") + "?ticker=test.ns&run=1")
         self.assertEqual(resp.context["ticker"], "TEST.NS")
         self.assertTrue(resp.context["autorun"])
+
+
+class TickerQuotesTests(LoggedInTestCase):
+    def test_quotes_for_market(self):
+        fake = {"^NSEI": {"price": 24000.0, "change": 120.0, "change_pct": 0.005, "as_of": "2026-11-19"},
+                "INFY.NS": {"price": 1500.0, "change": -15.0, "change_pct": -0.01, "as_of": "2026-11-19"}}
+        with mock.patch("stockapp.views.ticker.live_quotes", return_value=fake) as quotes:
+            data = self.client.get(reverse("ticker_quotes"), {"market": "in"}).json()
+        self.assertIn("RELIANCE.NS", quotes.call_args.args[0])
+        self.assertTrue(data["ok"])
+        self.assertEqual([i["symbol"] for i in data["items"]], ["^NSEI", "INFY.NS"])   # watchlist order
+        self.assertTrue(data["items"][0]["index"])
+
+    def test_unavailable_and_unknown_market(self):
+        with mock.patch("stockapp.views.ticker.live_quotes", return_value={}):
+            data = self.client.get(reverse("ticker_quotes"), {"market": "US"}).json()
+        self.assertFalse(data["ok"])
+        self.assertEqual(self.client.get(reverse("ticker_quotes"), {"market": "XX"}).status_code, 400)
+
+    def test_strip_is_on_pages(self):
+        with mock.patch("stockapp.views.ticker.live_quotes", return_value={}):
+            self.assertContains(self.client.get(reverse("dcf")), 'class="tape"')
 
 
 class PortfolioDCFTests(LoggedInTestCase):

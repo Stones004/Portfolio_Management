@@ -11,5 +11,6 @@ urlpatterns = [
     path('dcf/', views.dcf_view, name='dcf'),
     path('dcf/portfolio/', views.portfolio_dcf, name='portfolio_dcf'),
     path('dcf/value/', views.dcf_value_api, name='dcf_value_api'),
+    path('api/quotes/', views.ticker_quotes, name='ticker_quotes'),
 ]
 

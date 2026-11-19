@@ -25,6 +25,7 @@ values are starting points the user can override in the UI.
                    of capital forever - a proxy for how durable the moat is.
   normalize        use multi-year average margins/returns instead of the latest year.
 """
+import re
 
 PROFILES = {
     "general": {
@@ -93,6 +94,22 @@ PROFILES = {
     },
 }
 
+def normalize(text):
+    """Lower-case, single-spaced, with any dash shown as ' - '.
+
+    The two Yahoo endpoints spell names differently: the profile says 'Banks - Regional', the
+    search endpoint 'Banks—Regional' (em dash), sector keys look like 'financial-services'.
+    """
+    t = re.sub(r"\s*[‐-―−]\s*|\s+-\s+", " - ", str(text or ""))
+    return re.sub(r"\s+", " ", t).strip().lower()
+
+
+def _sector(text):
+    """'financial-services', 'Financial Services' and 'Financial  Services' all compare equal."""
+    return re.sub(r"[\s\-‐-―_]+", " ", normalize(text)).strip()
+
+
+_FINANCIAL_SECTORS = ("financial services", "financial", "financials")
 _FINANCIAL_KEYWORDS = (
     "bank", "insurance", "credit services", "capital markets", "asset management",
     "financial conglomerates", "mortgage finance", "shell companies",
@@ -103,38 +120,63 @@ _FINANCIAL_FCFF_EXCEPTIONS = ("insurance brokers", "financial data", "stock exch
 _CYCLICAL_INDUSTRIES = (
     "steel", "aluminum", "copper", "other industrial metals", "gold", "silver",
     "other precious metals", "coking coal", "thermal coal", "uranium",
-    "oil & gas", "chemicals", "specialty chemicals", "agricultural inputs",
+    "oil & gas", "chemicals", "agricultural inputs", "solar",
     "marine shipping", "auto manufacturers", "auto parts", "building materials",
     "paper & paper products", "lumber", "airlines", "farm & heavy construction",
-    "metal fabrication", "textile manufacturing",
+    "metal fabrication", "textile manufacturing", "residential construction",
+    "recreational vehicles",
 )
 
+# Industries whose economics differ from their Yahoo sector. Checked before the keyword lists.
+_INDUSTRY_OVERRIDES = {
+    # Platform / software-like businesses filed under Communication Services or Consumer Cyclical.
+    "internet content & information": "technology",
+    "electronic gaming & multimedia": "technology",
+    "internet retail": "technology",
+    "health information services": "technology",
+    # Paints, adhesives, flavours: branded, stable margins - not commodity chemicals.
+    "specialty chemicals": "general",
+}
+
 _SECTOR_MAP = {
-    "Technology": "technology",
-    "Communication Services": "general",
-    "Consumer Defensive": "consumer_defensive",
-    "Consumer Cyclical": "general",
-    "Healthcare": "healthcare",
-    "Industrials": "general",
-    "Basic Materials": "cyclical",
-    "Energy": "cyclical",
-    "Utilities": "utility",
-    "Real Estate": "real_estate",
-    "Financial Services": "general",
+    "technology": "technology",
+    "information technology": "technology",
+    "communication services": "general",
+    "consumer defensive": "consumer_defensive",
+    "consumer staples": "consumer_defensive",
+    "consumer cyclical": "general",
+    "consumer discretionary": "general",
+    "healthcare": "healthcare",
+    "health care": "healthcare",
+    "industrials": "general",
+    "basic materials": "cyclical",
+    "materials": "cyclical",
+    "energy": "cyclical",
+    "utilities": "utility",
+    "real estate": "real_estate",
+    "financial services": "general",
 }
 
 
 def classify(sector, industry):
-    """Map a yfinance sector/industry pair to a profile key."""
-    s = (sector or "").strip()
-    i = (industry or "").strip().lower()
+    """Map a Yahoo sector/industry pair to a profile key (tolerant of spelling variants)."""
+    s = _sector(sector)
+    i = normalize(industry)
 
-    if s == "Financial Services" or any(k in i for k in _FINANCIAL_KEYWORDS):
+    if i in _INDUSTRY_OVERRIDES:
+        return _INDUSTRY_OVERRIDES[i]
+    if s in _FINANCIAL_SECTORS or any(k in i for k in _FINANCIAL_KEYWORDS):
         if not any(k in i for k in _FINANCIAL_FCFF_EXCEPTIONS):
             return "financial"
     if any(k in i for k in _CYCLICAL_INDUSTRIES):
         return "cyclical"
-    return _SECTOR_MAP.get(s, "general")
+    if s in _SECTOR_MAP:
+        return _SECTOR_MAP[s]
+    if i.startswith("utilities"):
+        return "utility"
+    if i.startswith("reit") or i.startswith("real estate"):
+        return "real_estate"
+    return "general"
 
 
 def get_profile(key):
@@ -180,10 +222,11 @@ UNLEVERED_BETA_BY_SECTOR = {
 
 def industry_beta(sector, industry):
     """Return (beta, source_label) or (None, None) if no match."""
-    i = (industry or "").lower()
+    i = normalize(industry)
     for key, beta in UNLEVERED_BETA_BY_INDUSTRY.items():
         if key in i:
             return beta, f"industry '{industry}'"
-    if sector in UNLEVERED_BETA_BY_SECTOR:
-        return UNLEVERED_BETA_BY_SECTOR[sector], f"sector '{sector}'"
+    for name, beta in UNLEVERED_BETA_BY_SECTOR.items():
+        if _sector(name) == _sector(sector):
+            return beta, f"sector '{sector}'"
     return None, None

@@ -6,7 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 
 from analytics.dcf import DCF_Valuation, DCFError
-from analytics.industry import profile_choices
+from analytics.industry import PROFILES, profile_choices
 from analytics.market_data import DataError
 
 from ..models import Holding, Valuation
@@ -210,7 +210,7 @@ def portfolio_symbols(user):
 @login_required
 def dcf_view(request):
     ctx = {"ticker": "", "industry_choices": profile_choices(), "industry": "",
-           "detected_industry": "", "result": None, "error": None, "show_inputs": False,
+           "detected_industry": "", "detected_label": "", "result": None, "error": None, "show_inputs": False,
            "fields": [], "portfolio_symbols": portfolio_symbols(request.user), "autorun": False}
 
     if request.method != "POST":
@@ -236,7 +236,7 @@ def dcf_view(request):
             # Keep the user's inputs on screen if validation fails below.
             labels = DCF_LABELS[model.model]
             original = saved.get("original", {})
-            ctx.update(show_inputs=True, industry=model.profile["key"],
+            ctx.update(show_inputs=True,
                        fields=[(k, labels[k], original.get(k, ""), request.POST.get(k, ""), k in INTEGER_FIELDS)
                                for k, _ in DCF_FIELDS])
 
@@ -255,9 +255,13 @@ def dcf_view(request):
         inputs = _to_form(res["assumptions"])
         request.session["dcf_state"] = {"ticker": ticker, "profile": model.profile["key"],
                                         "original": original}
+        # The selector keeps only an explicit override. Echoing the detected model back as if
+        # the user had chosen it would pin it for the next ticker typed in, so a bank's FCFE
+        # model was applied to e.g. a steel company valued straight after it.
         ctx.update(
-            industry=model.profile["key"],
+            industry=industry if industry in PROFILES else "",
             detected_industry=model.detected_industry,
+            detected_label=PROFILES[model.detected_industry]["label"],
             result=_present(res),
             show_inputs=True,
             fields=[(k, labels[k], original[k], inputs[k], k in INTEGER_FIELDS) for k, _ in DCF_FIELDS],

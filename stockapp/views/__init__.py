@@ -4,5 +4,7 @@ from .dcf import dcf_view
 from .frontier import efficient_frontier
 from .portfolio import home
 from .portfolio_dcf import dcf_value_api, portfolio_dcf
+from .ticker import ticker_quotes
 
-__all__ = ["home", "efficient_frontier", "dcf_view", "register", "portfolio_dcf", "dcf_value_api"]
+__all__ = ["home", "efficient_frontier", "dcf_view", "register", "portfolio_dcf", "dcf_value_api",
+           "ticker_quotes"]

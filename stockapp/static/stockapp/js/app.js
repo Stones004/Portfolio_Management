@@ -18,12 +18,54 @@
         store("sv-theme", next);
     }));
 
-    /* ---------- mobile navigation ---------- */
+    /* ---------- sidebar: icon rail on desktop, slide-over drawer on mobile ---------- */
     const menuBtn = document.querySelector(".menu-btn");
     const scrim = document.querySelector(".scrim");
-    if (menuBtn) menuBtn.addEventListener("click", () => document.body.classList.toggle("nav-open"));
-    if (scrim) scrim.addEventListener("click", () => document.body.classList.remove("nav-open"));
-    document.addEventListener("keydown", e => { if (e.key === "Escape") document.body.classList.remove("nav-open"); });
+    const mobile = window.matchMedia("(max-width: 900px)");
+    function syncMenu() {
+        if (!menuBtn) return;
+        const open = mobile.matches ? document.body.classList.contains("nav-open") : !root.classList.contains("nav-collapsed");
+        menuBtn.setAttribute("aria-expanded", String(open));
+        menuBtn.setAttribute("aria-label", open ? "Collapse sidebar" : "Expand sidebar");
+    }
+    function toggleNav() {
+        if (mobile.matches) {
+            document.body.classList.toggle("nav-open");
+        } else {
+            const collapsed = root.classList.toggle("nav-collapsed");
+            store("sv-nav", collapsed ? "collapsed" : "open");
+            hideTip();
+        }
+        syncMenu();
+    }
+    if (menuBtn) menuBtn.addEventListener("click", toggleNav);
+    if (scrim) scrim.addEventListener("click", () => { document.body.classList.remove("nav-open"); syncMenu(); });
+    document.addEventListener("keydown", e => {
+        if (e.key === "Escape") { document.body.classList.remove("nav-open"); syncMenu(); }
+    });
+    mobile.addEventListener("change", () => { document.body.classList.remove("nav-open"); syncMenu(); });
+    syncMenu();
+
+    // Labels are hidden on the collapsed rail, so show them as a floating tooltip on hover/focus.
+    const tip = document.createElement("div");
+    tip.className = "nav-tip";
+    tip.setAttribute("aria-hidden", "true");
+    document.body.appendChild(tip);
+    function hideTip() { tip.classList.remove("show"); }
+    document.querySelectorAll(".sidebar [data-tip]").forEach(el => {
+        const showTip = () => {
+            if (mobile.matches || !root.classList.contains("nav-collapsed")) return;
+            const r = el.getBoundingClientRect();
+            tip.textContent = el.dataset.tip;
+            tip.style.left = (r.right + 12) + "px";
+            tip.style.top = (r.top + r.height / 2) + "px";
+            tip.classList.add("show");
+        };
+        el.addEventListener("mouseenter", showTip);
+        el.addEventListener("focus", showTip);
+        el.addEventListener("mouseleave", hideTip);
+        el.addEventListener("blur", hideTip);
+    });
 
     /* ---------- keyboard shortcuts: 1/2/3 jump between pages ---------- */
     const shortcuts = {};
@@ -33,6 +75,7 @@
         const t = e.target;
         if (t && (t.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName))) return;
         if (shortcuts[e.key]) leaveTo(shortcuts[e.key]);
+        else if (e.key === "[" && menuBtn) toggleNav();
     });
 
     /* ---------- page transitions ---------- */
@@ -165,4 +208,141 @@
         });
     }
     if (sessions.length) { updateSessions(); setInterval(updateSessions, 20000); }
+
+    /* ---------- live ticker strip ---------- */
+    const tape = document.querySelector(".tape");
+    if (tape) initTape(tape);
+
+    function initTape(tape) {
+        const track = tape.querySelector(".tape-track");
+        const glider = tape.querySelector(".tape-glider");
+        const buttons = tape.querySelectorAll("[data-market]");
+        const liveDot = tape.querySelector(".tape-live .pulse");
+        const liveTime = tape.querySelector(".tape-time");
+        const HOURS = { IN: ["Asia/Kolkata", "09:15", "15:30"], US: ["America/New_York", "09:30", "16:00"] };
+        const SPEED = 45;          // pixels per second
+        const POLL_MS = 60000;
+        let market = store("sv-market");
+        if (!HOURS[market]) {
+            const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || "");
+            market = /Kolkata|Calcutta/.test(tz) ? "IN" : "US";
+        }
+        let shownMarket = null, keys = "", nodes = {}, timer = null, request = 0;
+
+        function isOpen(m) {
+            const [tz, o, c] = HOURS[m];
+            const p = partsIn(tz);
+            const mins = (parseInt(p.hour, 10) % 24) * 60 + parseInt(p.minute, 10);
+            const toMin = t => { const [h, mm] = t.split(":").map(Number); return h * 60 + mm; };
+            return !["Sat", "Sun"].includes(p.weekday) && mins >= toMin(o) && mins < toMin(c);
+        }
+        function moveGlider() {
+            const on = tape.querySelector(`[data-market="${market}"]`);
+            if (!on || !glider) return;
+            glider.style.width = on.offsetWidth + "px";
+            glider.style.transform = `translateX(${on.offsetLeft}px)`;
+            buttons.forEach(b => b.setAttribute("aria-pressed", String(b === on)));
+        }
+        const fmt = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const pct = v => (v >= 0 ? "+" : "") + (v * 100).toFixed(2) + "%";
+        function escapeHtml(t) { return String(t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+        function tickHtml(q) {
+            const dir = q.change_pct == null ? "" : (q.change_pct >= 0 ? "up" : "down");
+            const chg = q.change_pct == null ? "" : `<span class="chg ${dir}">${pct(q.change_pct)}</span>`;
+            const inner = `<b>${escapeHtml(q.label)}</b><span class="px">${fmt.format(q.price)}</span>${chg}`;
+            if (q.index) return `<span class="tick idx" data-sym="${escapeHtml(q.symbol)}">${inner}</span>`;
+            const href = `${tape.dataset.dcfUrl}?ticker=${encodeURIComponent(q.symbol)}&run=1`;
+            return `<a class="tick" data-sym="${escapeHtml(q.symbol)}" href="${href}" title="Run a DCF on ${escapeHtml(q.label)}">${inner}</a>`;
+        }
+        function message(text) {
+            track.classList.remove("run");
+            track.innerHTML = `<span class="tape-msg">${escapeHtml(text)}</span>`;
+            keys = ""; nodes = {};
+        }
+        function build(items) {
+            // Two identical copies: the animation scrolls by exactly one copy, so the loop is seamless.
+            const once = items.map(tickHtml).join("");
+            track.classList.remove("run");
+            track.innerHTML = once + once.replace(/<(a|span) class="tick/g, '<$1 aria-hidden="true" tabindex="-1" class="tick');
+            nodes = {};
+            track.querySelectorAll(".tick").forEach(el => (nodes[el.dataset.sym] = nodes[el.dataset.sym] || []).push(el));
+            requestAnimationFrame(() => {
+                const width = track.scrollWidth / 2;
+                track.style.setProperty("--tape-dur", Math.max(20, width / SPEED) + "s");
+                if (!reduceMotion) track.classList.add("run");
+            });
+        }
+        function update(items) {
+            // Same symbols as before: update prices in place so the strip keeps scrolling smoothly.
+            items.forEach(q => (nodes[q.symbol] || []).forEach(el => {
+                const px = el.querySelector(".px");
+                const old = parseFloat(px.dataset.v || "NaN");
+                px.textContent = fmt.format(q.price);
+                if (isFinite(old) && q.price !== old) {
+                    px.classList.remove("flash-up", "flash-down");
+                    void px.offsetWidth;   // restart the animation
+                    px.classList.add(q.price > old ? "flash-up" : "flash-down");
+                }
+                px.dataset.v = q.price;
+                const chg = el.querySelector(".chg");
+                if (chg && q.change_pct != null) {
+                    chg.textContent = pct(q.change_pct);
+                    chg.className = "chg " + (q.change_pct >= 0 ? "up" : "down");
+                }
+            }));
+        }
+        function stamp() {
+            const open = isOpen(market);
+            if (liveDot) liveDot.classList.toggle("open", open);
+            if (liveTime) liveTime.textContent = (open ? "Live " : "Closed · ")
+                + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        }
+
+        async function load() {
+            const id = ++request, m = market;
+            try {
+                const res = await fetch(`${tape.dataset.quotesUrl}?market=${m}`, { headers: { "Accept": "application/json" }, credentials: "same-origin" });
+                const data = await res.json();
+                if (id !== request) return;               // a newer request (market switch) won
+                if (!data.ok || !data.items.length) { message(data.error || "Live prices are unavailable right now."); return; }
+                const newKeys = data.items.map(q => q.symbol).join("|");
+                const swapping = shownMarket !== m;
+                if (newKeys !== keys) {
+                    if (swapping && shownMarket !== null && !reduceMotion) {
+                        track.classList.add("swap");
+                        await new Promise(r => setTimeout(r, 300));
+                        if (id !== request) return;
+                    }
+                    build(data.items);
+                    keys = newKeys;
+                    track.classList.remove("swap");
+                }
+                update(data.items);
+                shownMarket = m;
+                stamp();
+            } catch (e) {
+                if (id === request && !keys) message("Live prices are unavailable right now.");
+            }
+        }
+        function schedule() {
+            clearInterval(timer);
+            timer = setInterval(() => { if (!document.hidden) load(); }, POLL_MS);
+        }
+
+        buttons.forEach(b => b.addEventListener("click", () => {
+            if (b.dataset.market === market) return;
+            market = b.dataset.market;
+            store("sv-market", market);
+            moveGlider();
+            load();
+            schedule();
+        }));
+        document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+        window.addEventListener("resize", moveGlider);
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(moveGlider);
+        moveGlider();
+        load();
+        schedule();
+    }
 })();

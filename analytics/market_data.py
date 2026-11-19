@@ -7,6 +7,7 @@ hour, so a "Re-run" or a second page view does not hit Yahoo again.
 """
 import json
 import math
+import re
 import threading
 import time
 
@@ -19,6 +20,12 @@ DEGRADED_CACHE_TTL_SECONDS = 60
 
 _cache = {}
 _lock = threading.Lock()
+
+
+def _tidy_name(text):
+    """Display form of a Yahoo sector/industry name: any dash shown as ' - ', single spaces."""
+    text = re.sub(r"\s*[‐-―−]\s*", " - ", str(text or ""))
+    return re.sub(r"\s+", " ", text).strip()
 
 
 class DataError(Exception):
@@ -122,6 +129,48 @@ def download_closes(tickers, period="5y"):
     return _cached(("closes", tuple(tickers), period), load).copy()
 
 
+QUOTE_TTL_SECONDS = 60
+
+
+def live_quotes(symbols):
+    """Latest price and change vs the previous close for several symbols, in one request.
+
+    Daily bars include the current session's bar while the market is open, so the last close is
+    the latest (exchange-delayed) price. Cached for a minute so every open page polling the ticker
+    strip costs one Yahoo request per market per minute. Symbols with no data are left out.
+    """
+    symbols = tuple(dict.fromkeys(s.strip().upper() for s in symbols if s and s.strip()))
+    if not symbols:
+        return {}
+
+    def load():
+        try:
+            raw = yf.download(list(symbols), period="5d", interval="1d", progress=False,
+                              auto_adjust=False, threads=True)
+        except Exception:
+            return {}
+        closes = ensure_df_close(raw)
+        if len(symbols) == 1 and not closes.empty:
+            closes.columns = list(symbols)
+        out = {}
+        for sym in symbols:
+            if sym not in closes.columns:
+                continue
+            col = closes[sym].dropna()
+            if col.empty:
+                continue
+            price = float(col.iloc[-1])
+            prev = float(col.iloc[-2]) if len(col) > 1 else None
+            change = price - prev if prev else None
+            out[sym] = {"price": price, "change": change,
+                        "change_pct": change / prev if prev else None,
+                        "as_of": col.index[-1].strftime("%Y-%m-%d")}
+        return out
+
+    # An empty result (Yahoo throttling) is retried on the next poll rather than cached.
+    return _cached(("live", symbols), load, ttl=lambda v: QUOTE_TTL_SECONDS if v else 5)
+
+
 def latest_quote(symbol):
     def load():
         hist = yf.Ticker(symbol).history(period="5d")
@@ -152,19 +201,25 @@ class CompanyData:
             self.info = dict(t.info or {})
         except Exception:
             self.info = {}
-        if not self.info.get("sector") and not self.info.get("marketCap"):
-            self.info.update(self._chart_metadata(t))
+        # Industry detection depends on sector/industry, so fall back whenever they are missing -
+        # a throttled "info" can still carry a market cap or price but no profile fields.
+        if not self.info.get("sector") or not self.info.get("industry"):
+            profile_blocked = not self.info.get("sector")
+            for key, value in self._chart_metadata(t).items():
+                self.info.setdefault(key, value)
             # Sector/industry/name from the search endpoint, which is rarely blocked.
             for key, value in self._search_profile(self.ticker).items():
-                self.info.setdefault(key, value)
-            if self.info.get("sector"):
+                if not self.info.get(key):
+                    self.info[key] = value
+            if not self.info.get("sector"):
+                self.warnings.append(
+                    "Yahoo did not return this company's sector or industry (likely rate-limited), "
+                    "so the industry model could not be detected and the general model was used. "
+                    "Pick the industry model manually, or re-run in a minute.")
+            elif profile_blocked:
                 self.warnings.append(
                     "Yahoo company profile was unavailable (rate-limited); sector and industry came "
-                    "from Yahoo search and the country was inferred from the ticker.")
-            else:
-                self.warnings.append(
-                    "Yahoo company profile was unavailable (rate-limited), so sector and country were "
-                    "inferred from the ticker. Pick the industry model manually if needed.")
+                    "from Yahoo search.")
 
         # Throttled requests come back as empty tables rather than errors: retry once.
         for attempt in range(2):
@@ -206,8 +261,9 @@ class CompanyData:
         # Multiply statement values by this to express them in price currency.
         self.fx = fx_rate(self.reporting_currency, self.price_currency)
 
-        self.sector = self.info.get("sector") or ""
-        self.industry = self.info.get("industry") or ""
+        # Search spells 'Banks—Regional' (em dash) where the profile says 'Banks - Regional'.
+        self.sector = _tidy_name(self.info.get("sector"))
+        self.industry = _tidy_name(self.info.get("industry"))
         self.country = self.info.get("country") or suffix_country
         self.name = self.info.get("longName") or self.info.get("shortName") or self.ticker
 
@@ -238,11 +294,22 @@ class CompanyData:
     @staticmethod
     def _search_profile(ticker):
         """Sector / industry / name from Yahoo's search endpoint (works when "info" is blocked)."""
-        try:
-            quotes = yf.Search(ticker, max_results=5, news_count=0).quotes or []
-        except Exception:
-            return {}
-        match = next((q for q in quotes if (q.get("symbol") or "").upper() == ticker), None)
+        # The search endpoint is flaky: a full symbol ('INFY.NS') sometimes returns nothing while
+        # the base symbol ('INFY') lists every listing. Try both, and only accept an exact match.
+        queries = [ticker]
+        base = ticker.split(".")[0]
+        if base and base != ticker:
+            queries.append(base)
+        match = None
+        for query in queries:
+            try:
+                quotes = yf.Search(query, max_results=10, news_count=0).quotes or []
+            except Exception:
+                continue
+            match = next((q for q in quotes if (q.get("symbol") or "").upper() == ticker
+                          and (q.get("sector") or q.get("sectorDisp"))), None)
+            if match:
+                break
         if not match:
             return {}
         out = {"sector": match.get("sector") or match.get("sectorDisp"),

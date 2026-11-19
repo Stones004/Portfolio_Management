@@ -14,6 +14,7 @@
             try { t = localStorage.getItem("sv-theme"); } catch (e) {}
             if (!t && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) t = "light";
             d.setAttribute("data-theme", t || "dark");
+            try { if (localStorage.getItem("sv-nav") === "collapsed") d.classList.add("nav-collapsed"); } catch (e) {}
         })();
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -30,41 +31,41 @@
     {% if user.is_authenticated %}
     {% with page=request.resolver_match.url_name %}
     <div class="shell">
-        <aside class="sidebar" aria-label="Primary">
+        <aside class="sidebar" id="sidebar" aria-label="Primary">
             <a class="brand" href="{% url 'home' %}" data-transition>
                 <span class="brand-mark" aria-hidden="true">
                     <svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="13" width="4" height="8" rx="1"/><rect x="10" y="8" width="4" height="13" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/></svg>
                 </span>
-                <span>
+                <span class="brand-text">
                     <div class="brand-name">StockVision</div>
                     <div class="brand-tag">Capital Analytics</div>
                 </span>
             </a>
 
             <div class="nav-label">Workspace</div>
-            <nav class="nav">
-                <a href="{% url 'home' %}" data-transition data-key="1" class="{% if page == 'home' %}active{% endif %}">
+            <nav class="nav" style="--n:4">
+                <a href="{% url 'home' %}" data-tip="Portfolio" data-transition data-key="1" class="{% if page == 'home' %}active{% endif %}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/></svg>
-                    Portfolio <span class="kbd">1</span>
+                    <span class="nav-text">Portfolio</span> <span class="kbd">1</span>
                 </a>
-                <a href="{% url 'efficient_frontier' %}" data-transition data-key="2" class="{% if page == 'efficient_frontier' %}active{% endif %}">
+                <a href="{% url 'efficient_frontier' %}" data-tip="Efficient Frontier" data-transition data-key="2" class="{% if page == 'efficient_frontier' %}active{% endif %}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M3 21V3"/><path d="M5 18c3-8 8-12 15-13"/><circle cx="13" cy="9" r="1.6" fill="currentColor"/></svg>
-                    Efficient Frontier <span class="kbd">2</span>
+                    <span class="nav-text">Efficient Frontier</span> <span class="kbd">2</span>
                 </a>
-                <a href="{% url 'dcf' %}" data-transition data-key="3" class="{% if page == 'dcf' %}active{% endif %}">
+                <a href="{% url 'dcf' %}" data-tip="DCF Valuation" data-transition data-key="3" class="{% if page == 'dcf' %}active{% endif %}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10 12 4l9 6"/><path d="M5 10v9M9.5 10v9M14.5 10v9M19 10v9"/><path d="M3 21h18"/></svg>
-                    DCF Valuation <span class="kbd">3</span>
+                    <span class="nav-text">DCF Valuation</span> <span class="kbd">3</span>
                 </a>
-                <a href="{% url 'portfolio_dcf' %}" data-transition data-key="4" class="{% if page == 'portfolio_dcf' %}active{% endif %}">
+                <a href="{% url 'portfolio_dcf' %}" data-tip="Portfolio DCF" data-transition data-key="4" class="{% if page == 'portfolio_dcf' %}active{% endif %}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/><path d="m13 16 2-2 2 2 2-3"/></svg>
-                    Portfolio DCF <span class="kbd">4</span>
+                    <span class="nav-text">Portfolio DCF</span> <span class="kbd">4</span>
                 </a>
             </nav>
 
             <div class="sidebar-foot">
                 <div class="data-note">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg>
-                    Market data via Yahoo Finance
+                    <span class="nav-text">Market data via Yahoo Finance</span>
                 </div>
                 <div class="user-card">
                     <span class="avatar">{{ user.username|slice:":1" }}</span>
@@ -84,9 +85,10 @@
         <div class="scrim"></div>
 
         <div class="content">
+            <div class="topwrap">
             <header class="topbar">
-                <button class="icon-btn menu-btn" type="button" aria-label="Open menu">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+                <button class="icon-btn menu-btn" type="button" aria-label="Toggle sidebar" aria-controls="sidebar" title="Toggle sidebar  [ ]">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path class="mb-1" d="M4 7h16"/><path class="mb-2" d="M4 12h16"/><path class="mb-3" d="M4 17h10"/></svg>
                 </button>
                 <div class="crumbs">StockVision <span aria-hidden="true">/</span> <strong>{% block crumb %}Portfolio{% endblock %}</strong></div>
                 <div class="topbar-right">
@@ -99,6 +101,19 @@
                     </button>
                 </div>
             </header>
+
+            <div class="tape" data-quotes-url="{% url 'ticker_quotes' %}" data-dcf-url="{% url 'dcf' %}">
+                <div class="tape-markets" role="group" aria-label="Ticker market">
+                    <button type="button" data-market="IN" aria-pressed="false">India</button>
+                    <button type="button" data-market="US" aria-pressed="false">US</button>
+                    <span class="tape-glider" aria-hidden="true"></span>
+                </div>
+                <div class="tape-viewport" aria-live="off">
+                    <div class="tape-track"><span class="tape-msg">Loading live prices…</span></div>
+                </div>
+                <span class="tape-live" title="Prices refresh every minute; exchange data may be delayed up to 15 minutes."><span class="pulse"></span><span class="tape-time">—</span></span>
+            </div>
+            </div>
 
             <main>
                 {% for m in messages %}
